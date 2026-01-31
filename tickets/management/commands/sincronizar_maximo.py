@@ -1,9 +1,23 @@
+import os
+import django
+import sys
+
+# 1. Adiciona a pasta do projeto ao caminho do Python (caso não esteja)
+sys.path.append('/home/ubuntu/portal_suporte/tickets/management/commands/sincronizar_maximo.py')
+
+# 2. Aponta para o arquivo settings.py
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'portal_suporte.settings')
+
+# 3. Inicia o Django
+django.setup()
+
 import requests
 import logging
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from tickets.models import Ticket, MAXIMO_STATUS_CHOICES
 from requests.adapters import HTTPAdapter, Retry
+
 
 # Configuração de Log
 logger = logging.getLogger(__name__)

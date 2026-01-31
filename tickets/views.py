@@ -22,7 +22,7 @@ def pagina_inicial(request: HttpRequest) -> HttpResponse:
     if request.user.is_authenticated:
         return render(request, "tickets/bem_vindo.html")
     else:
-        return redirect("login")
+        return redirect("tickets:login")
 
 
 # SUCESSO

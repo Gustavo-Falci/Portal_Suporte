@@ -86,7 +86,7 @@ DATABASES = {
         "USER": os.getenv('DB_USER'),
         "PASSWORD": os.getenv('DB_PASSWORD'),
         "HOST": os.getenv('DB_HOST', 'localhost'),
-        "PORT": "5432",
+        "PORT": os.getenv('DB_PORT'),
     }
 }
 
@@ -108,18 +108,18 @@ USE_TZ = True
 
 # ARQUIVOS ESTÁTICOS E MÍDIA
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 
 # Onde estão seus arquivos originais (CSS do Admin e do Site)
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'staticfiles'), 
+    os.path.join(BASE_DIR, 'collectstatic'), 
 ]
 
 # Onde o Django vai "juntar" tudo no deploy (Railway usa essa pasta)
-STATIC_ROOT = os.path.join(BASE_DIR, 'collected_static')
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Engine de compressão do Whitenoise
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 
 # Uploads (Anexos)
 MEDIA_URL = '/media/'
@@ -132,7 +132,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # AUTENTICAÇÃO E LOGIN
 
 AUTH_USER_MODEL = "tickets.Cliente"
-LOGIN_URL = "login"
+LOGIN_URL = "tickets:login"
 LOGIN_REDIRECT_URL = "tickets:pagina_inicial"
 LOGOUT_REDIRECT_URL = "tickets:login"
 
@@ -163,9 +163,9 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 # CONFIGURAÇÕES DE SEGURANÇA E AMBIENTE
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
     SECURE_HSTS_SECONDS = 31536000 
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True

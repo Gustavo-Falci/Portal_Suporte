@@ -1,41 +1,294 @@
-/* Define a cor de fundo e a fonte para o corpo da página */
+/* Variáveis de Cores (Inspirado no IBM Carbon Design) */
+:root {
+    --ibm-blue-60: #0f62fe;
+    --ibm-blue-70: #0043ce;
+    --ibm-gray-10: #f4f4f4;
+    --ibm-gray-100: #161616;
+    --ibm-white: #ffffff;
+    --ibm-alert-success: #198038;
+    --ibm-alert-error: #da1e28;
+}
+
 body {
-    background-color: #f4f4f4 !important;
-    color: #161616 !important;
-    font-family: Arial, sans-serif !important;
+    background-color: var(--ibm-gray-10) !important;
+    color: var(--ibm-gray-100) !important;
+    font-family: 'IBM Plex Mono', monospace !important; /* Fonte Obrigatória */
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
-/* Estiliza os botões primários com o azul do Maximo */
-.btn-primary {
-    background-color: #0f62fe !important;
-    border-color: #0f62fe !important;
+/* Navbar */
+.bg-dark-ibm {
+    background-color: var(--ibm-gray-100) !important;
+    border-bottom: 2px solid var(--ibm-blue-60);
 }
 
-/* Estiliza as mensagens de sucesso, erro e aviso */
-.alert-success {
-    background-color: #198038 !important;
-    color: #ffffff !important;
-    border-color: #198038 !important;
+.navbar-brand {
+    font-weight: 600;
+    letter-spacing: 0.5px;
 }
 
-.alert-danger {
-    background-color: #da1e28 !important;
-    color: #ffffff !important;
-    border-color: #da1e28 !important;
-}
-
-.alert-warning {
-    background-color: #ff832b !important;
-    color: #ffffff !important;
-    border-color: #ff832b !important;
-}
-
-/* Estiliza os cards de forma mais sutil */
+/* Cards */
 .card {
-    border-color: #c6c6c6 !important;
-    box-shadow: none;
+    border: none !important;
+    border-radius: 0 !important; /* Design 'sharp' corporativo */
+    background-color: var(--ibm-white);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05); /* Sombra muito sutil */
 }
 
-.login-offset {
-    margin-top: 1000px !important; /* Altere este valor para ajustar a altura */
+.card-header {
+    background-color: var(--ibm-white) !important;
+    border-bottom: 1px solid #e0e0e0;
+    font-weight: 600;
+    padding: 1.5rem 1.5rem 0.5rem;
+}
+
+.card-body {
+    padding: 2rem;
+}
+
+/* Botões */
+.btn {
+    border-radius: 0 !important; /* Botões quadrados */
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    padding: 0.75rem 1.5rem;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background-color: var(--ibm-blue-60) !important;
+    border-color: var(--ibm-blue-60) !important;
+}
+
+.btn-primary:hover {
+    background-color: var(--ibm-blue-70) !important;
+    border-color: var(--ibm-blue-70) !important;
+}
+
+/* Inputs e Forms */
+.form-control, .form-select {
+    border-radius: 0 !important;
+    border: 1px solid #8d8d8d;
+    background-color: #f4f4f4;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+}
+
+.form-control:focus, .form-select:focus {
+    background-color: var(--ibm-white);
+    border-color: var(--ibm-blue-60);
+    box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.2);
+}
+
+.form-floating > label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+}
+
+/* Classes Utilitárias */
+.login-container {
+    max-width: 400px;
+    margin: 4rem auto;
+}
+
+.abrir-container {
+    max-width: 800px;
+    margin: 2rem auto;
+}
+
+/* Efeitos de Loading */
+.btn-loading .spinner-border {
+    width: 1rem;
+    height: 1rem;
+    margin-right: 0.5rem;
+}
+
+/* Alertas estilo IBM */
+.alert-ibm-error {
+    background-color: #fff1f1; /* Fundo levemente avermelhado */
+    border: none;
+    border-left: 4px solid var(--ibm-alert-error); /* Faixa vermelha à esquerda */
+    color: var(--ibm-gray-100);
+    border-radius: 0 !important; /* Design 'sharp' */
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+}
+
+.alert-ibm-error ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Ícone de erro (opcional, usando caractere ou SVG se tiver) */
+.alert-ibm-error::before {
+    content: '!'; 
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--ibm-alert-error);
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    margin-right: 15px;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+/* Chat / Timeline Styling */
+.font-monospace {
+    font-family: 'IBM Plex Mono', monospace !important;
+}
+
+/* Diferenciação de mensagens */
+.chat-timeline .border-primary {
+    border-color: var(--ibm-blue-60) !important;
+}
+
+.chat-timeline .bg-primary {
+    background-color: var(--ibm-blue-60) !important;
+}
+
+/* Ajuste nos campos de formulário dentro do chat */
+.chat-section textarea.form-control {
+    border-radius: 0;
+    border: 1px solid #8d8d8d;
+    resize: vertical;
+}
+
+.chat-section textarea.form-control:focus {
+    outline: 2px solid var(--ibm-blue-60);
+    border-color: transparent;
+}
+
+/* Tamanho de fonte utilitário */
+.fs-7 {
+    font-size: 0.85rem;
+}
+
+/* Container da linha da mensagem */
+.chat-row {
+    display: flex;
+    align-items: flex-end; /* Alinha o avatar com o final do balão (fundo) */
+    margin-bottom: 1.5rem;
+    width: 100%;
+}
+
+/* O Balão */
+.chat-bubble {
+    max-width: 75%;
+    width: fit-content;
+    border-radius: 8px;
+    position: relative;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* O Avatar (Imagem ao lado) */
+.chat-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: white;
+    flex-shrink: 0; /* Não deixa o avatar espremer */
+}
+
+/* --- CONFIGURAÇÃO: EU (Direita) --- */
+.chat-me {
+    justify-content: flex-end; /* Joga tudo para a direita */
+}
+
+.chat-me .chat-bubble {
+    margin-right: 10px; /* Espaço entre balão e avatar */
+    background-color: #e5f6ff; 
+    border: 1px solid #cceeff;
+    border-bottom-right-radius: 0;
+}
+
+.chat-me .chat-avatar {
+    background-color: var(--ibm-blue-60); /* Azul IBM */
+    order: 2; /* Avatar fica DEPOIS do balão visualmente */
+}
+
+/* --- CONFIGURAÇÃO: OUTROS (Esquerda) --- */
+.chat-other {
+    justify-content: flex-start; /* Mantém na esquerda */
+}
+
+.chat-other .chat-bubble {
+    margin-left: 10px; /* Espaço entre avatar e balão */
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-bottom-left-radius: 0;
+}
+
+.chat-other .chat-avatar {
+    background-color: #8d8d8d; /* Cinza para outros */
+    order: 0; /* Avatar fica ANTES do balão */
+}
+
+/* Destaque para Suporte no avatar */
+.avatar-support {
+    background-color: #0043ce !important; /* Azul escuro IBM */
+}
+
+/* Utilitário de Texto */
+.text-uppercase {
+    text-transform: uppercase !important;
+}
+
+.input-group-text {
+    background-color: #f4f4f4 !important; 
+    border: 1px solid #8d8d8d;
+    border-right: none;
+    color: #525252; /* Cor do ícone */
+}
+
+/* Input sem borda esquerda para colar no ícone */
+.input-group .form-control.border-start-0 {
+    border-left: none;
+    background-color: #f4f4f4; /* Garante que o campo de texto também seja cinza */
+}
+
+/* Quando clica para digitar (Foco) */
+.input-group .form-control:focus {
+    box-shadow: none;
+    background-color: #ffffff; /* Fica branco para dar destaque ao digitar (Opcional) */
+    border-color: #8d8d8d;
+    outline: 2px solid var(--ibm-blue-60); /* Borda azul IBM */
+    outline-offset: -2px;
+    z-index: 5;
+}
+
+/* Efeito Hover no Card do Ticket */
+.ticket-card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ticket-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+    border-color: var(--ibm-blue-60) !important; /* Borda esquerda muda de cor */
+}
+
+.hover-link:hover {
+    color: var(--ibm-blue-60) !important;
+    text-decoration: underline !important;
+}
+
+/* Avatar Placeholder */
+.avatar-circle {
+    font-size: 0.9rem;
+    background-color: #525252 !important; /* IBM Gray 70 */
 }
