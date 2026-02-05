@@ -49,70 +49,81 @@
 <div class="hero-background"></div>
 
 <div class="container d-flex align-items-center justify-content-center" style="min-height: 80vh;">
-    <div class="card login-container w-100 shadow-sm">
+    <div class="card login-container w-100 shadow-sm" style="max-width: 400px;">
         <div class="card-body">
-            <div class="text-center mb-4">
-                <h3 class="fw-bold mb-1">Bem-vindo</h3>
-                <p class="text-muted small">Faça login para acessar o Portal de Suporte</p>
-            </div>
-
-            {% if form.errors %}
-                <div id="generalErrorAlert" class="text-center mb-4 fade show">
-                    <div class="d-inline-flex align-items-center text-danger fw-bold small">
-                        <i class="fa-solid fa-circle-exclamation me-2"></i>
-                        {% if form.non_field_errors %}
-                            <span>{{ form.non_field_errors.0 }}</span>
-                        {% else %}
-                             <span>Preencha os campos obrigatórios abaixo.</span>
-                        {% endif %}
-                    </div>
+            
+            {% if not is_troca_senha %}
+                <div class="text-center mb-4">
+                    <h3 class="fw-bold mb-1">Bem-vindo</h3>
+                    <p class="text-muted small">Faça login para acessar o Portal</p>
                 </div>
+
+                {% if form.errors %}
+                    <div id="generalErrorAlert" class="text-center mb-4 fade show">
+                        <div class="d-inline-flex align-items-center text-danger fw-bold small">
+                            <i class="fa-solid fa-circle-exclamation me-2"></i>
+                            <span>E-mail ou senha incorretos.</span>
+                        </div>
+                    </div>
+                {% endif %}
+
+                <form method="post" id="loginForm" novalidate>
+                    {% csrf_token %}
+                    <div class="form-floating mb-3">
+                        <input type="text" name="username" class="form-control {% if form.username.errors %}is-invalid{% endif %}" id="floatingInput" placeholder="seu@email.com" value="{{ form.username.value|default:'' }}" autofocus>
+                        <label for="floatingInput">E-mail</label>
+                    </div>
+
+                    <div class="form-floating mb-4">
+                        <input type="password" name="password" class="form-control {% if form.password.errors %}is-invalid{% endif %}" id="floatingPassword" placeholder="Senha">
+                        <label for="floatingPassword">Senha</label>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg" id="btnSubmit">
+                            <span class="spinner-border spinner-border-sm d-none me-2" role="status"></span>
+                            <i class="fa-solid fa-arrow-right-to-bracket me-2" id="btnIcon"></i>
+                            <span class="btn-text">Entrar</span>
+                        </button>
+                    </div>
+                </form>
+            {% else %}
+                <div class="text-center mb-4">
+                    <h3 class="fw-bold mb-1 text-primary">Primeiro Acesso</h3>
+                    <p class="text-muted small">Por segurança, defina uma nova senha para sua conta.</p>
+                </div>
+
+                <form method="post" id="passwordForm" novalidate>
+                    {% csrf_token %}
+                    
+                    {% for field in form_troca_senha %}
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">{{ field.label }}</label>
+                            <input type="{{ field.field.widget.input_type }}" 
+                                   name="{{ field.name }}" 
+                                   class="form-control {% if field.errors %}is-invalid{% endif %}"
+                                   placeholder="Digite sua nova senha">
+                            {% if field.errors %}
+                                <div class="invalid-feedback">{{ field.errors.0 }}</div>
+                            {% endif %}
+                            {% if field.help_text %}
+                                <div class="form-text small" style="font-size: 0.7rem;">{{ field.help_text|safe }}</div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-success btn-lg" id="btnSavePassword">
+                            <span class="spinner-border spinner-border-sm d-none me-2" role="status"></span>
+                            <i class="fa-solid fa-check me-2" id="saveIcon"></i>
+                            <span class="save-text">Definir Senha e Entrar</span>
+                        </button>
+                    </div>
+                </form>
             {% endif %}
 
-            <form method="post" id="loginForm" novalidate>
-                {% csrf_token %}
-                
-                <div class="form-floating mb-3">
-                    <input type="text" name="username" 
-                           class="form-control {% if form.username.errors %}is-invalid{% endif %}" 
-                           id="floatingInput" 
-                           placeholder="seu@email.com" 
-                           value="{{ form.username.value|default:'' }}" 
-                           autofocus>
-                    <label for="floatingInput">E-mail</label>
-                    
-                    {% if form.username.errors %}
-                        <div class="invalid-feedback text-start">
-                            {{ form.username.errors.0 }}
-                        </div>
-                    {% endif %}
-                </div>
-
-                <div class="form-floating mb-4">
-                    <input type="password" name="password" 
-                           class="form-control {% if form.password.errors %}is-invalid{% endif %}" 
-                           id="floatingPassword" 
-                           placeholder="Senha">
-                    <label for="floatingPassword">Senha</label>
-                    
-                    {% if form.password.errors %}
-                        <div class="invalid-feedback text-start">
-                            {{ form.password.errors.0 }}
-                        </div>
-                    {% endif %}
-                </div>
-
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary btn-lg" id="btnSubmit">
-                        <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
-                        <i class="fa-solid fa-arrow-right-to-bracket me-2" id="btnIcon"></i>
-                        <span class="btn-text">Entrar</span>
-                    </button>
-                </div>
-            </form>
-            
             <div class="text-center mt-4">
-                <small class="text-muted">Esqueceu a senha? Contate o suporte <a href="mailto:suportebr@itconsol.com" class="text-decoration-none text-muted fw-bold">suportebr@itconsol.com</a></small>
+                <small class="text-muted">Suporte: <a href="mailto:suportebr@itconsol.com" class="text-decoration-none text-muted fw-bold">suportebr@itconsol.com</a></small>
             </div>
         </div>
     </div>
@@ -120,42 +131,35 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // 1. Feedback visual ao Enviar (Spinner)
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
-            var btn = document.getElementById('btnSubmit');
-            var spinner = btn.querySelector('.spinner-border');
-            var text = btn.querySelector('.btn-text');
-            var icon = document.getElementById('btnIcon');
-            
-            // Ativa o estado de carregamento
-            btn.classList.add('disabled'); 
-            spinner.classList.remove('d-none'); // Mostra spinner
-            icon.classList.add('d-none');       // Esconde ícone de porta
-            text.innerText = "Entrando...";     // Muda texto
-        });
+        // Função para ativar spinner em qualquer formulário
+        const setupLoader = (formId, btnId, textLoading) => {
+            const form = document.getElementById(formId);
+            if (!form) return;
+            form.addEventListener('submit', function() {
+                const btn = document.getElementById(btnId);
+                const spinner = btn.querySelector('.spinner-border');
+                const text = btn.querySelector('.btn-text, .save-text');
+                const icon = btn.querySelector('.fa-solid');
+                
+                btn.classList.add('disabled');
+                spinner.classList.remove('d-none');
+                if(icon) icon.classList.add('d-none');
+                text.innerText = textLoading;
+            });
+        };
 
-        // 2. Limpar erros ao digitar (Lógica Inteligente)
-        var invalidFields = document.querySelectorAll('.is-invalid');
-        var generalAlert = document.getElementById('generalErrorAlert');
+        setupLoader('loginForm', 'btnSubmit', 'Autenticando...');
+        setupLoader('passwordForm', 'btnSavePassword', 'Salvando...');
 
-        invalidFields.forEach(function(field) {
-            var checkRemainingErrors = function() {
-                // a) Remove o vermelho deste campo
-                if (field.classList.contains('is-invalid')) {
-                    field.classList.remove('is-invalid');
+        // Limpeza de erros ao digitar
+        document.querySelectorAll('.is-invalid').forEach(field => {
+            field.addEventListener('input', function() {
+                this.classList.remove('is-invalid');
+                const alert = document.getElementById('generalErrorAlert');
+                if (alert && document.querySelectorAll('.is-invalid').length === 0) {
+                    alert.classList.add('d-none');
                 }
-
-                // b) Verifica se ainda existe algum campo vermelho na tela
-                var remainingErrors = document.querySelectorAll('.is-invalid').length;
-
-                // c) Se não sobrar nenhum erro, esconde o alerta do topo
-                if (remainingErrors === 0 && generalAlert) {
-                    generalAlert.classList.add('d-none');
-                }
-            };
-
-            // Dispara ao digitar
-            field.addEventListener('input', checkRemainingErrors);
+            });
         });
     });
 </script>

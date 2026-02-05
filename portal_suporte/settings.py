@@ -26,10 +26,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Lê do .env. Se não achar, usa uma chave insegura 
 SECRET_KEY = os.getenv('SECRET_KEY')
 
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # Converte a string 'True'/'False' do .env para booleano do Python
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = ['*']
 
 
 # APLICAÇÕES E MIDDLEWARE
@@ -93,7 +95,18 @@ DATABASES = {
 # VALIDAÇÃO DE SENHA E I18N
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+    "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
+    "OPTIONS": {
+            # Verifica semelhança com esses campos
+            "user_attributes": ("username", "email", "first_name", "last_name"),
+            
+            # 0.1 = muito rigoroso (tem que ser muito diferente)
+            # 0.7 = padrão do Django
+            # 0.9 = muito permissivo (só bloqueia se for quase idêntico)
+            "max_similarity": 0.9, 
+        }
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -163,9 +176,9 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 # CONFIGURAÇÕES DE SEGURANÇA E AMBIENTE
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = False
-    SESSION_COOKIE_SECURE = False
-    CSRF_COOKIE_SECURE = False
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 31536000 
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
@@ -173,7 +186,7 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # CSRF para Deploy (Permite POST vindo do seu domínio https)
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost,http://127.0.0.1').split(',')
+CSRF_TRUSTED_ORIGINS = ['https://portal-suporte.iiotconsol.com','https://www.portal-suporte.iiotconsol.com']
 
 # Mapeamento de Tags do Django para Classes CSS do Bootstrap
 MESSAGE_TAGS = {

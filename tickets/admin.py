@@ -123,12 +123,20 @@ class TicketAdmin(admin.ModelAdmin):
 
 @admin.register(Ambiente)
 class AmbienteAdmin(admin.ModelAdmin):
-    list_display = ("nome_ambiente", "numero_ativo", "cliente")
-    search_fields = ("nome_ambiente", "numero_ativo", "cliente__username")
+    # Alteramos para usar uma função customizada para exibir os donos
+    list_display = ("nome_ambiente", "numero_ativo", "get_clientes_vinculados")
+    
+    # Busca ajustada para o novo nome do campo (clientes__username)
+    search_fields = ("nome_ambiente", "numero_ativo", "clientes__username")
 
-    # Melhora performance e UX
-    list_select_related = ("cliente",)
-    autocomplete_fields = ["cliente"]
+    # ManyToMany funciona melhor com filter_horizontal ou autocomplete_fields
+    autocomplete_fields = ["clientes"] 
+
+    # Função para listar os nomes na tabela do admin
+    def get_clientes_vinculados(self, obj):
+        return ", ".join([c.username for c in obj.clientes.all()])
+    
+    get_clientes_vinculados.short_description = "Clientes Vinculados"
 
 
 @admin.register(Area)

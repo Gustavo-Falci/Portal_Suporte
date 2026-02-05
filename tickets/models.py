@@ -70,6 +70,12 @@ class Cliente(AbstractUser):
     location = models.CharField(max_length=200, blank=True, null=True)
     person_id = models.CharField(max_length=150, blank=True, null=True)
     email = models.EmailField(unique=True, verbose_name="Endereço de e-mail")
+    
+    
+    precisa_trocar_senha = models.BooleanField(
+        default=True, 
+        verbose_name="Precisa trocar senha no próximo login"
+    )
 
     groups = models.ManyToManyField(
         "auth.Group", related_name="cliente_groups", blank=True
@@ -91,9 +97,16 @@ class Cliente(AbstractUser):
 
 
 class Ambiente(models.Model):
-    cliente = models.ForeignKey(
-        Cliente, on_delete=models.CASCADE, related_name="ambientes"
+    #cliente = models.ForeignKey(
+    #    Cliente, on_delete=models.CASCADE, related_name="ambientes"
+    #)
+    
+    clientes = models.ManyToManyField(
+        Cliente, 
+        related_name="ambientes",
+        verbose_name="Clientes com acesso"
     )
+    
     nome_ambiente = models.CharField(max_length=100)
     numero_ativo = models.CharField(max_length=20)
 

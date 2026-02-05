@@ -10,6 +10,9 @@ from .services import MaximoEmailService, NotificationService, MaximoSenderServi
 from django.template.loader import render_to_string
 from django.http import JsonResponse
 from django.core.paginator import Paginator
+from django.contrib.auth import authenticate, login as auth_login, update_session_auth_hash
+from django.contrib.auth.forms import SetPasswordForm
+from .forms import EmailAuthenticationForm
 import logging
 import os
 import threading
@@ -289,3 +292,55 @@ def marcar_notificacao_lida(request, notificacao_id):
     if notificacao.link:
         return redirect(notificacao.link)
     return redirect("tickets:pagina_inicial")
+    
+def login_view(request: HttpRequest) -> HttpResponse:
+    """
+    Gerencia o login e a troca de senha obrigatória na mesma tela.
+    """
+    if request.user.is_authenticated:
+        return redirect("tickets:pagina_inicial")
+
+    form = EmailAuthenticationForm(request, data=request.POST or None)
+    form_troca_senha = None
+
+    # Verificamos se há um ID de usuário na sessão (indicando que ele passou pela fase 1)
+    user_id_pendente = request.session.get('user_id_troca_senha')
+    
+    if request.method == "POST":
+        # CASO 2: O usuário já autenticou e agora enviou a NOVA SENHA
+        if user_id_pendente:
+            user = get_object_or_404(Cliente, pk=user_id_pendente)
+            form_troca_senha = SetPasswordForm(user, request.POST)
+            
+            if form_troca_senha.is_valid():
+                user = form_troca_senha.save()
+                user.precisa_trocar_senha = False  # Flag que criamos no models.py
+                user.save()
+                
+                # Autentica e limpa a sessão temporária
+                auth_login(request, user, backend='tickets.backend.EmailBackend')
+                update_session_auth_hash(request, user)
+                del request.session['user_id_troca_senha']
+                
+                messages.success(request, "Senha definida com sucesso! Bem-vindo ao portal.")
+                return redirect("tickets:pagina_inicial")
+        
+        # CASO 1: Tentativa de login normal (E-mail e Senha Padrão)
+        elif form.is_valid():
+            user = form.get_user()
+            
+            if user.precisa_trocar_senha:
+                # Não logamos ainda! Guardamos o ID dele para a fase 2
+                request.session['user_id_troca_senha'] = user.id
+                form_troca_senha = SetPasswordForm(user)
+                # Mantemos o 'form' de login vazio para o template saber que mudou de fase
+            else:
+                auth_login(request, user, backend='tickets.backend.EmailBackend')
+                return redirect("tickets:pagina_inicial")
+
+    context = {
+        "form": form,
+        "form_troca_senha": form_troca_senha,
+        "is_troca_senha": bool(form_troca_senha)
+    }
+    return render(request, "tickets/login.html", context)

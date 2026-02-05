@@ -157,7 +157,7 @@ class TicketForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         if user:
-            self.fields["ambiente"].queryset = Ambiente.objects.filter(cliente=user)
+            self.fields["ambiente"].queryset = Ambiente.objects.filter(clientes=user)
 
             location_str = (
                 str(user.location).upper() if getattr(user, "location", None) else ""
@@ -169,7 +169,7 @@ class TicketForm(forms.ModelForm):
 
             if tem_acesso_area:
                 self.fields["area"].queryset = Area.objects.filter(cliente=user)
-                self.fields["area"].required = True
+                self.fields["area"].required = False
             else:
                 self.fields["area"].queryset = Area.objects.none()
                 self.fields["area"].required = False
