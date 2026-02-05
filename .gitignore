@@ -7,3 +7,4 @@ staticfiles/
 *.log
 .DS_Storemedia
 media/
+portal_suporte/settings.py
