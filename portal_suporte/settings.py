@@ -31,7 +31,7 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # Converte a string 'True'/'False' do .env para booleano do Python
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['portal-suporte.iiotconsol.com', 'www.portal-suporte.iiotconsol.com']
 
 
 # APLICAÇÕES E MIDDLEWARE
