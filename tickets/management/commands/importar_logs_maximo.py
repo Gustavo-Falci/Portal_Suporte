@@ -102,10 +102,6 @@ class Command(BaseCommand):
         return user
 
     def _clean_html(self, raw_html: str) -> str:
-        """
-        Limpa tags HTML, comentários do Maximo e converte quebras de linha
-        para texto plano compatível com o chat (pre-wrap).
-        """
         if not raw_html:
             return ""
         
