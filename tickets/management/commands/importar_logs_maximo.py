@@ -1,10 +1,13 @@
 import logging
 import requests
 import re
+import html
 import urllib3
+import html
 from datetime import datetime
 from django.core.management.base import BaseCommand
 from django.conf import settings
+from django.utils.html import strip_tags
 from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_datetime
 from requests.adapters import HTTPAdapter, Retry
@@ -100,12 +103,37 @@ class Command(BaseCommand):
         return user
 
     def _clean_html(self, raw_html: str) -> str:
-        """Limpa as tags HTML e retorna direto"""
+        if not raw_html:
+            return ""
+
+        """
+        Limpa tags HTML, comentários do Maximo e converte quebras de linha
+        para texto plano compatível com o chat (pre-wrap).
+        """
         if not raw_html:
             return ""
         
-        # Simplificado: Retorna direto o resultado do regex, sem variável intermediária
-        return re.sub(r'', '', raw_html, flags=re.DOTALL).strip()
+        # 1. Remove comentários específicos do Maximo ()
+
+        # O flag re.IGNORECASE garante que pegue Rich Text, RICH TEXT, etc.
+        texto = re.sub(r'', '', raw_html, flags=re.IGNORECASE)
+
+        # 2. Converte tags de quebra de linha visual para quebra de linha de texto (\n)
+        # Substitui <br>, <br/>, </p>, </div> por \n
+        texto = re.sub(r'<(br\s*/?|/p|/div)>', '\n', texto, flags=re.IGNORECASE)
+
+        # 3. Remove todas as outras tags HTML (ex: <b>, <span>, <font>)
+        texto = strip_tags(texto)
+
+
+        # 4. Decodifica entidades HTML (ex: &nbsp; vira espa�o, &gt; vira >)
+        texto = html.unescape(texto)
+
+        # 4. Decodifica entidades HTML (ex: &nbsp; vira espaço, &gt; vira >)
+        texto = html.unescape(texto)
+
+        # 5. Limpeza final de espaços extras nas pontas
+        return texto.strip()
 
     def _processar_logs(self, ticket, logs, bot_user) -> int:
         count = 0
