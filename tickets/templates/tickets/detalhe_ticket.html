@@ -10,6 +10,10 @@
             <a href="{% url 'tickets:fila_atendimento' %}" class="btn btn-outline-secondary me-3 rounded-0">
                 <i class="bi bi-arrow-left"></i> Voltar
             </a>
+        {% elif origem == 'inicio'%}
+            <a href="{% url 'tickets:pagina_inicial' %}" class="btn btn-outline-secondary me-3 rounded-0">
+                <i class="bi bi-arrow-left"></i> Voltar
+            </a>
         {% else %}
             <a href="{% url 'tickets:meus_tickets' %}" class="btn btn-outline-secondary me-3 rounded-0">
                 <i class="bi bi-arrow-left"></i> Voltar

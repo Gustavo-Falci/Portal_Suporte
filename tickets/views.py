@@ -22,10 +22,33 @@ logger = logging.getLogger(__name__)
 
 # PÁGINA INICIAL
 def pagina_inicial(request: HttpRequest) -> HttpResponse:
-    if request.user.is_authenticated:
-        return render(request, "tickets/bem_vindo.html")
-    else:
+    if not request.user.is_authenticated:
         return redirect("tickets:login")
+
+    user = request.user
+    
+    # 1. QuerySet Base (Apenas tickets deste cliente)
+    qs_tickets = Ticket.objects.filter(cliente=user)
+
+    # 2. Estatísticas Rápidas
+    # Consideramos "Em Aberto" tudo que não está Fechado, Resolvido ou Cancelado
+    status_encerrados = ['RESOLVED', 'CLOSED', 'CANCELLED']
+    
+    total_abertos = qs_tickets.exclude(status_maximo__in=status_encerrados).count()
+    total_geral = qs_tickets.count()
+
+    # 3. Últimos 3 Tickets (Para acesso rápido)
+    ultimos_tickets = qs_tickets.order_by('-data_criacao')[:3]
+
+    context = {
+        "total_abertos": total_abertos,
+        "total_geral": total_geral,
+        "ultimos_tickets": ultimos_tickets,
+        # O nome do usuário já vem no request.user, mas podemos formatar se quiser
+        "primeiro_nome": user.get_short_name() or user.username
+    }
+
+    return render(request, "tickets/bem_vindo.html", context)
 
 
 # SUCESSO
