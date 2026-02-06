@@ -101,7 +101,7 @@
                                 <td>
                                     {% if ticket.status_maximo == 'NEW' or ticket.status_maximo == 'QUEUED' %}
                                         <span class="badge {{ ticket.badge_class }} rounded-0 mb-2 w-50 text-truncate">Novo</span>
-                                    {% elif ticket.status_maximo == 'RESOLVED' or ticket.status_maximo == 'CLOSED' %}
+                                    {% elif ticket.status_maximo == 'RESOLVED' or ticket.status_maximo == 'CLOSED' or ticket.status_maximo == 'CANCELLED'%}
                                         <span class="badge {{ ticket.badge_class }} rounded-0 mb-2 w-50 text-truncate">Fechado</span>
                                     {% else %}
                                         <span class="badge {{ ticket.badge_class }} rounded-0 mb-2 w-50 text-truncate">Em Andamento</span>
