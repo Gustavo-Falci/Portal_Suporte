@@ -8,7 +8,13 @@
     
     <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
         <div>
-            <h2 class="h4 mb-1 fw-bold font-monospace">Fila de Atendimento</h2>
+            <h2 class="h4 mb-1 fw-bold font-monospace">
+                {% if is_consultor and not user.is_support_team %}
+                    Meus Tickets (Técnico)
+                {% else %}
+                    Fila de Atendimento
+                {% endif %}
+            </h2>
             <p class="text-muted mb-0 small">Gerenciamento centralizado de solicitações</p>
         </div>
         <div class="d-flex gap-3">
@@ -42,7 +48,7 @@
                             </svg>
                         </span>
                         <input type="text" name="q" class="form-control border-start-0 rounded-0 ps-2" 
-                               placeholder="ID, Título, Descrição..." 
+                               placeholder="ID, Título, Descrição, Dono..." 
                                value="{{ filtros_atuais.q|default:'' }}">
                     </div>
                 </div>
@@ -119,7 +125,8 @@
                             <p class="card-text text-secondary text-truncate mb-2 small">
                                 {{ ticket.descricao }}
                             </p>
-                            <div class="d-flex align-items-center gap-3 text-muted small mt-2">
+                            
+                            <div class="d-flex align-items-center flex-wrap gap-3 text-muted small mt-2">
                                 <span title="Ambiente">
                                     <i class="bi bi-hdd-rack me-1"></i> {{ ticket.ambiente.nome_ambiente|default:"--" }}
                                 </span>
@@ -128,7 +135,21 @@
                                     <i class="bi bi-building me-1"></i> {{ ticket.area }}
                                 </span>
                                 {% endif %}
+                                
+                                <span class="border-start ps-3" title="Proprietário / Técnico Responsável">
+                                    {% if ticket.owner %}
+                                        <span class="badge bg-light text-dark border">
+                                            <i class="bi bi-person-badge-fill me-1 text-primary"></i> 
+                                            {{ ticket.owner }}
+                                        </span>
+                                    {% else %}
+                                        <span class="fst-italic opacity-50">
+                                            <i class="bi bi-person-dash me-1"></i> Sem técnico
+                                        </span>
+                                    {% endif %}
+                                </span>
                             </div>
+
                         </div>
 
                         <div class="col-md-3 p-3 border-start">

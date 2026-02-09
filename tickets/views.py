@@ -10,7 +10,7 @@ from .services import MaximoEmailService, NotificationService, MaximoSenderServi
 from django.template.loader import render_to_string
 from django.http import JsonResponse
 from django.core.paginator import Paginator
-from django.contrib.auth import authenticate, login as auth_login, update_session_auth_hash
+from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import SetPasswordForm
 from .forms import EmailAuthenticationForm
 import logging
@@ -182,35 +182,56 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
 @login_required(login_url="/login/")
 def fila_atendimento(request: HttpRequest) -> HttpResponse:
     """
-    Exibe TODOS os tickets com filtros avançados para a equipe de suporte.
+    Exibe a fila de tickets.
+    - Suporte (Staff) / Liderança: Veem TODOS os tickets.
+    - Consultores (sem cargo de liderança): Veem APENAS os seus tickets.
     """
-    # 1. Segurança
-    if not request.user.is_support_team:
-        messages.warning(request, "Acesso restrito à equipe de suporte.")
+    
+    # 1. Identificação de Perfil
+    is_consultor = request.user.groups.filter(name="Consultores").exists()
+    
+    # NOVO: Verifica se o usuário é do grupo 'lider_suporte'
+    is_lider = request.user.groups.filter(name="lider_suporte").exists()
+    
+    # Verifica se é equipe de suporte (Staff/Admin)
+    is_support = getattr(request.user, 'is_support_team', False) or request.user.is_superuser
+
+    # 2. Segurança: Acesso permitido para Suporte, Líderes ou Consultores
+    if not is_support and not is_consultor and not is_lider:
+        messages.warning(request, "Acesso restrito.")
         return redirect("tickets:meus_tickets")
 
-    # 2. Base da Query
+    # 3. Base da Query
     tickets = (
-        Ticket.objects.all()
+        Ticket.objects.exclude(maximo_id__isnull=True)
         .select_related("cliente", "ambiente")
         .order_by("-data_criacao")
     )
 
-    # 3. Captura dos Filtros via GET
+    # --- LÓGICA DE VISIBILIDADE ---
+    # O filtro por dono só é aplicado se for Consultor E NÃO FOR (Suporte OU Líder)
+    # Se FOLIVEIRA estiver no grupo 'lider_suporte', ele pula este if e vê tudo.
+    if is_consultor and not is_support and not is_lider:
+        if request.user.person_id:
+            tickets = tickets.filter(owner__iexact=request.user.person_id)
+        else:
+            tickets = Ticket.objects.none()
+            messages.warning(request, "Seu usuário não possui um ID Maximo configurado.")
+    # ------------------------------
+
+    # 4. Captura dos Filtros via GET
     status_filter = request.GET.get("status")
     location_filter = request.GET.get("location")
     search_query = request.GET.get("q")
 
-    # 4. Aplicação dos Filtros
+    # 5. Aplicação dos Filtros Opcionais
     if status_filter:
         tickets = tickets.filter(status_maximo=status_filter)
 
     if location_filter:
-        # Filtra tickets onde o 'location' do cliente é igual ao selecionado
         tickets = tickets.filter(cliente__location=location_filter)
 
     if search_query:
-        # Busca por ID, Título, Descrição ou Nome do Cliente
         tickets = tickets.filter(
             Q(maximo_id__icontains=search_query)
             | Q(sumario__icontains=search_query)
@@ -218,10 +239,10 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
             | Q(cliente__username__icontains=search_query)
             | Q(cliente__first_name__icontains=search_query)
             | Q(cliente__location__icontains=search_query)
+            | Q(owner__icontains=search_query)
         )
 
-    # 5. Dados para popular os Dropdowns do Filtro
-    # Pega apenas clientes que não são staff/suporte para limpar a lista
+    # 6. Dados para Dropdowns
     lista_locations = (
         Cliente.objects.values_list("location", flat=True)
         .exclude(location__isnull=True)
@@ -232,29 +253,29 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
 
     status_choices = MAXIMO_STATUS_CHOICES
 
-    # 6. Estatísticas Rápidas (Opcional, mas fica pro)
+    # 7. Estatísticas
     stats = {
         "total": tickets.count(),
         "criticos": tickets.filter(prioridade=1).count(),
         "novos": tickets.filter(status_maximo="NEW").count(),
     }
 
-    # Define quantos tickets aparecem por página (ex: 15)
+    # 8. Paginação
     paginator = Paginator(tickets, 15)
-
-    # Pega o número da página da URL (?page=2)
     page_number = request.GET.get("page")
-
-    # Obtém apenas os tickets daquela página específica
     page_obj = paginator.get_page(page_number)
 
     context = {
         "tickets": page_obj,
         "lista_locations": lista_locations,
         "status_choices": status_choices,
-        "filtros_atuais": request.GET,  # Para manter o form preenchido
+        "filtros_atuais": request.GET,
         "stats": stats,
+        # Passamos as flags para o template
+        "is_consultor": is_consultor,
+        "is_lider": is_lider, 
     }
+    
     return render(request, "tickets/fila_atendimento.html", context)
 
 

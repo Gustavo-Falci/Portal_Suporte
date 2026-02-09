@@ -36,7 +36,7 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'tickets:meus_tickets' %}">Meus Tickets</a>
                     </li>
-                    {% if user.is_support_team %}
+                    {% if user.is_support_team or user.is_consultor or user.is_lider_suporte %}
                     <li class="nav-item ms-lg-2">
                         <a class="nav-link text-warning fw-bold" href="{% url 'tickets:fila_atendimento' %}">
                             <i class="bi bi-inbox-fill me-1"></i> Tickets de Suporte

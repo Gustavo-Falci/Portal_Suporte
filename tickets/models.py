@@ -93,7 +93,11 @@ class Cliente(AbstractUser):
 
     @property
     def is_support_team(self):
-        return self.is_staff or self.is_consultor
+        return self.is_staff
+    
+    @property
+    def is_lider_suporte(self):
+        return self.groups.filter(name="lider_suporte").exists()
 
 
 class Ambiente(models.Model):
@@ -151,6 +155,13 @@ class Ticket(models.Model):
         default="NEW",
         choices=MAXIMO_STATUS_CHOICES,
         verbose_name="Status Atual",
+    )
+
+    owner = models.CharField(
+        max_length=50, 
+        blank=True, 
+        null=True, 
+        verbose_name="Proprietário (Maximo ID)"
     )
 
     prioridade = models.CharField(
