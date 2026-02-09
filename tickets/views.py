@@ -113,10 +113,19 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
     ticket = get_object_or_404(Ticket, pk=pk)
     origem = request.GET.get("origin")
 
-    # Permissão (mantida)
-    if not (request.user.is_support_team or ticket.cliente == request.user):
+    is_dono = (ticket.cliente == request.user)
+    is_staff = getattr(request.user, 'is_support_team', False) or request.user.is_superuser
+    is_lider = request.user.groups.filter(name="lider_suporte").exists()
+    
+    # Verifica se é o consultor dono do ticket
+    is_owner_assigned = False
+    if request.user.person_id and ticket.owner:
+        is_owner_assigned = (ticket.owner.lower() == request.user.person_id.lower())
+
+    # Lógica de bloqueio: Se não for nenhuma das opções acima, expulsa
+    if not (is_dono or is_staff or is_lider or is_owner_assigned):
         messages.error(request, "Você não tem permissão para visualizar este ticket.")
-        return redirect("meus_tickets")
+        return redirect("tickets:meus_tickets")
 
     if request.method == "POST":
         form = TicketInteracaoForm(request.POST, request.FILES)
