@@ -235,7 +235,6 @@
     {% else %}
         <div class="text-center py-5">
             <div class="mb-3">
-                {# Lógica Visual: Se for Consultor (sem cargo de chefia) e NÃO tiver filtros aplicados, mostra um ícone feliz #}
                 {% if is_consultor and not user.is_support_team and not is_lider and not filtros_atuais %}
                     <i class="bi bi-emoji-smile fs-1 text-muted opacity-25"></i>
                 {% else %}
@@ -246,7 +245,6 @@
             <h5 class="text-muted fw-normal">
                 {% if is_consultor and not user.is_support_team and not is_lider and not filtros_atuais %}
                     Você não possui tickets atribuídos no momento.
-                    <p class="small mt-2">Ótimo trabalho! Tudo limpo por aqui.</p>
                 {% else %}
                     Nenhum ticket encontrado com esses filtros.
                 {% endif %}
