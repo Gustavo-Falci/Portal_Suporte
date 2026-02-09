@@ -3,7 +3,6 @@ import requests
 import re
 import urllib3
 import html
-from datetime import datetime
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from django.utils.html import strip_tags
@@ -19,12 +18,12 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 class Command(BaseCommand):
-    help = 'Importa Worklogs do IBM Maximo para o Chat do Portal'
+    help = 'Importa Worklogs do IBM Maximo para o Chat do Portal (Apenas CLIENTNOTE)'
 
     def handle(self, *args, **options):
-        self.stdout.write("--- Iniciando ImportaÃ§Ã£o de Logs do Maximo ---")
+        self.stdout.write("--- Iniciando Importação de Logs do Maximo ---")
         
-        # 2. Configurar SessÃ£o HTTP (SSL Desativado e Sem Proxy)
+        # 2. Configurar Sessão HTTP (SSL Desativado e Sem Proxy)
         retry_strategy = Retry(
             total=3, 
             backoff_factor=1, 
@@ -32,7 +31,7 @@ class Command(BaseCommand):
         )
         
         http = requests.Session()
-        http.verify = False       # Desativa verificaÃ§Ã£o SSL na sessÃ£o
+        http.verify = False       # Desativa verificação SSL na sessão
         http.trust_env = False    # Ignora proxies do sistema (importante para .testing)
         
         http.mount("https://", HTTPAdapter(max_retries=retry_strategy))
@@ -46,7 +45,7 @@ class Command(BaseCommand):
 
         api_url = getattr(settings, 'MAXIMO_API_URL', '')
 
-        # 3. Obter UsuÃ¡rio Bot
+        # 3. Obter Usuário Bot
         bot_user = self._get_system_user()
 
         # 4. Buscar Tickets Locais
@@ -56,14 +55,15 @@ class Command(BaseCommand):
 
         for ticket in tickets:
             try:
-                # Busca logs especÃ­ficos deste ticket
+                # Busca logs específicos deste ticket
                 params = {
                     "oslc.where": f'ticketid="{ticket.maximo_id}"',
-                    "oslc.select": "ticketid,worklog{recordkey,createby,createdate,description,description_longdescription}",
+                    # ALTERADO: Adicionado 'logtype' na solicitação
+                    "oslc.select": "ticketid,worklog{recordkey,createby,logtype,createdate,description,description_longdescription}",
                     "lean": 1
                 }
                 
-                response = http.get(api_url, params=params, timeout=10) # verify jÃ¡ estÃ¡ na session
+                response = http.get(api_url, params=params, timeout=10)
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -77,7 +77,7 @@ class Command(BaseCommand):
                         if count > 0:
                             self.stdout.write(f"Ticket #{ticket.maximo_id}: {count} novos logs.")
                 else:
-                    # Aviso silencioso no log, nÃ£o polui terminal
+                    # Aviso silencioso no log, não polui terminal
                     logger.warning(f"Ticket {ticket.maximo_id}: HTTP {response.status_code}")
 
             except Exception as e:
@@ -87,7 +87,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"--- Fim. Total importado: {total_importado} ---"))
 
     def _get_system_user(self):
-        """Cria ou recupera o usuÃ¡rio robÃ´"""
+        """Cria ou recupera o usuário robô"""
         email_bot = "maximo.integracao@itconsol.com"
         user, created = User.objects.get_or_create(
             email=email_bot,
@@ -105,46 +105,48 @@ class Command(BaseCommand):
         if not raw_html:
             return ""
         
-        # 1. Remove comentários específicos do Maximo ()
-        # O flag re.IGNORECASE garante que pegue Rich Text, RICH TEXT, etc.
+        # 1. Remove comentários específicos do Maximo
         texto = re.sub(r'', '', raw_html, flags=re.IGNORECASE)
 
         # 2. Converte tags de quebra de linha visual para quebra de linha de texto (\n)
-        # Substitui <br>, <br/>, </p>, </div> por \n
         texto = re.sub(r'<(br\s*/?|/p|/div)>', '\n', texto, flags=re.IGNORECASE)
 
-        # 3. Remove todas as outras tags HTML (ex: <b>, <span>, <font>)
+        # 3. Remove todas as outras tags HTML
         texto = strip_tags(texto)
 
-        # 4. Decodifica entidades HTML (ex: &nbsp; vira espaço, &gt; vira >)
+        # 4. Decodifica entidades HTML
         texto = html.unescape(texto)
 
         # 5. Limpeza final de espaços extras nas pontas
         return texto.strip()
-        
-        # Simplificado: Retorna direto o resultado do regex, sem variÃ¡vel intermediÃ¡ria
-        return re.sub(r'', '', raw_html, flags=re.DOTALL).strip()
 
     def _processar_logs(self, ticket, logs, bot_user) -> int:
         count = 0
         for log in logs:
-            # Pega descriÃ§Ã£o (Longa tem prioridade)
+            # --- NOVO FILTRO ---
+            # Filtra apenas logs do tipo CLIENTNOTE
+            tipo = log.get("logtype", "")
+            if tipo != "CLIENTNOTE":
+                continue
+            # -------------------
+
+            # Pega descrição (Longa tem prioridade)
             texto_bruto = log.get("description_longdescription") or log.get("description")
             
-            # Chama a funÃ§Ã£o simplificada
+            # Chama a função simplificada
             msg_final_limpa = self._clean_html(texto_bruto)
             
             if not msg_final_limpa:
                 continue
 
             autor = log.get("createby", "SUPORTE")
-            mensagem_formatada = f"ðŸ“‹ [Log do Maximo - {autor}]\n\n{msg_final_limpa}"
+            mensagem_formatada = f"📋 [{autor}]\n\n{msg_final_limpa}"
 
-            # Verifica se jÃ¡ existe (IdempotÃªncia)
+            # Verifica se já existe (Idempotência)
             if TicketInteracao.objects.filter(ticket=ticket, mensagem=mensagem_formatada).exists():
                 continue
 
-            # Cria a interaÃ§Ã£o
+            # Cria a interação
             interacao = TicketInteracao.objects.create(
                 ticket=ticket,
                 autor=bot_user,
