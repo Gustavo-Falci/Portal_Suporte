@@ -172,11 +172,6 @@ class Ticket(models.Model):
         blank=False,
     )
 
-    # MELHORIA: upload_to usa função para organizar pastas
-    anexo = models.FileField(
-        upload_to=ticket_upload_path, null=True, blank=True, verbose_name="Anexo"
-    )
-
     # Auditoria
     data_criacao = models.DateTimeField(auto_now_add=True, verbose_name="Aberto em")
     data_atualizacao = models.DateTimeField(
@@ -221,6 +216,27 @@ class Ticket(models.Model):
             return "bg-secondary"
         else:
             return "bg-primary"
+    
+    @property
+    def tem_anexos(self):
+        """Retorna True se houver pelo menos um arquivo anexado."""
+        return self.anexos.exists()
+        
+class TicketAnexo(models.Model):
+    """
+    Modelo para suportar múltiplos arquivos por Ticket.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ticket = models.ForeignKey(Ticket, related_name='anexos', on_delete=models.CASCADE)
+    arquivo = models.FileField(upload_to=ticket_upload_path)
+    data_envio = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Anexo do Ticket {self.ticket.id}"
+
+    @property
+    def filename(self):
+        return os.path.basename(self.arquivo.name)
 
 
 class TicketInteracao(models.Model):

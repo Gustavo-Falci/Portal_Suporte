@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Cliente, Ambiente, Area, Ticket, TicketInteracao, Notificacao
+from .models import Cliente, Ambiente, Area, Ticket, TicketInteracao, Notificacao, TicketAnexo
 
 # Customização do Cabeçalho
 admin.site.site_header = "Portal de Suporte | Administração"
@@ -57,6 +57,12 @@ class ClienteAdmin(UserAdmin):
         ),
     )
 
+class TicketAnexoInline(admin.TabularInline):
+    model = TicketAnexo
+    extra = 0
+    readonly_fields = ('data_envio',)
+    # Opcional: Para evitar que deletem arquivos acidentalmente
+    # can_delete = False 
 
 @admin.register(Ticket)
 class TicketAdmin(admin.ModelAdmin):
@@ -78,17 +84,13 @@ class TicketAdmin(admin.ModelAdmin):
         "maximo_id",
     )
 
-    # PERFORMANCE: Evita queries duplicadas ao listar tickets
     list_select_related = ("cliente", "area", "ambiente")
-
-    # UX: Transforma o dropdown gigante numa caixa de busca
     autocomplete_fields = ["cliente"]
-
-    # Protege campos de auditoria e integração
     readonly_fields = ("data_criacao", "data_atualizacao", "maximo_id")
-
     ordering = ("-data_criacao",)
-    inlines = [TicketInteracaoInline]
+
+    # AQUI ESTÁ A MÁGICA: Os anexos aparecerão listados abaixo do formulário principal
+    inlines = [TicketAnexoInline, TicketInteracaoInline]
 
     fieldsets = (
         (
@@ -106,14 +108,12 @@ class TicketAdmin(admin.ModelAdmin):
         (
             "Classificação",
             {
-                # CORREÇÃO CRÍTICA: Mudado de 'arquivo' para 'anexo'
-                "fields": ("area", "ambiente", "anexo")
+                "fields": ("area", "ambiente") 
             },
         ),
         (
             "Integração Maximo",
             {
-                # Adicionei 'maximo_id' aqui como readonly (definido acima)
                 "fields": ("maximo_id", "data_criacao", "data_atualizacao"),
                 "classes": ("collapse",),
             },

@@ -3,9 +3,10 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpRequest, FileResponse
 from django.contrib import messages
 from django.urls import reverse
-from .models import Ticket, TicketInteracao, Cliente, Notificacao, MAXIMO_STATUS_CHOICES
+from .models import Ticket, TicketInteracao, Cliente, Notificacao, MAXIMO_STATUS_CHOICES, TicketAnexo
 from .forms import TicketForm, TicketInteracaoForm
 from django.db.models import Q
+from django.db import transaction
 from .services import MaximoEmailService, NotificationService, MaximoSenderService
 from django.template.loader import render_to_string
 from django.http import JsonResponse
@@ -84,23 +85,37 @@ def meus_tickets(request: HttpRequest) -> HttpResponse:
 @login_required(login_url="/login/")
 def criar_ticket(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
+        # Passamos user=request.user para filtrar a Area no __init__ do form
         form = TicketForm(request.POST, request.FILES, user=request.user)
 
         if form.is_valid():
-            ticket = form.save(commit=False)
-            ticket.cliente = request.user
+            try:
+                with transaction.atomic():
+                    # 1. Salva o Ticket
+                    ticket = form.save(commit=False)
+                    ticket.cliente = request.user
+                    ticket.save()
 
-            # Tratamento de upload simplificado na view
-            anexo_upload = request.FILES.get("arquivo")
-            if anexo_upload:
-                ticket.anexo = anexo_upload
+                    # 2. Processa Anexos no Banco
+                    anexos_upload = request.FILES.getlist("arquivo")
+                    if anexos_upload:
+                        for arquivo_temp in anexos_upload:
+                            TicketAnexo.objects.create(ticket=ticket, arquivo=arquivo_temp)
+                
+                # 3. Envio de E-mail (Fora da transação atômica do banco)
+                # Se o e-mail falhar, o ticket continua salvo (o que é bom, pois o suporte pode ver)
+                try:
+                    MaximoEmailService.enviar_ticket_maximo(ticket, request.user, anexos_upload)
+                except Exception as e:
+                    logger.error(f"Erro no envio de e-mail (Ticket {ticket.id}): {e}")
+                    # Opcional: messages.warning(request, "Ticket criado, mas houve erro no envio do e-mail.")
 
-            ticket.save()
+                return redirect("tickets:ticket_sucesso")
 
-            # O código "sujo" de e-mail foi substituído por uma única linha:
-            MaximoEmailService.enviar_ticket_maximo(ticket, request.user, anexo_upload)
-
-            return redirect("tickets:ticket_sucesso")
+            except Exception as e:
+                # Se der erro ao salvar no banco (ticket ou anexos), nada é salvo
+                logger.error(f"Erro ao criar ticket no banco: {e}")
+                messages.error(request, "Ocorreu um erro ao salvar o ticket. Tente novamente.")
     else:
         form = TicketForm(user=request.user)
 

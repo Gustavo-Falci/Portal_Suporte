@@ -120,15 +120,15 @@
                 </div>
 
                 <div class="mb-4">
-                    <label for="arquivo" class="form-label small text-muted ms-1">Anexar documento de evidência (Opcional)</label>
+                    <label for="arquivo" class="form-label small text-muted ms-1">Anexar documentos de evidência (Opcional)</label>
                     
                     <input class="form-control {% if form.arquivo.errors %}is-invalid{% endif %}" 
                         type="file" 
                         id="arquivo" 
                         name="arquivo"
+                        multiple 
                         accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.rar,.xml,.pptx,.ppt">
-                    
-                    <div id="jsFileError" class="invalid-feedback text-start"></div>
+                        <div id="jsFileError" class="invalid-feedback text-start"></div>
 
                     {% if form.arquivo.errors %}
                         <div class="invalid-feedback text-start d-block">
@@ -137,6 +137,10 @@
                             {% endfor %}
                         </div>
                     {% endif %}
+                    
+                    <div class="form-text text-muted" style="font-size: 0.8rem;">
+                        Segure <strong>Ctrl</strong> (ou Cmd no Mac) para selecionar vários arquivos. Máx: 150MB total.
+                    </div>
                 </div>
 
                 <hr class="my-4">
@@ -160,7 +164,6 @@
         // --- 1. CONFIGURAÇÕES ---
         const MAX_SIZE_MB = 150;
         const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
-        // Adicionei as extensões que apareciam no seu print
         const ALLOWED_EXTS = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv', '.zip', '.rar', '.xml', '.pptx', '.ppt'];
 
         // --- 2. SELETORES ---
@@ -169,37 +172,55 @@
         const form = document.getElementById('ticketForm');
         const generalAlert = document.getElementById('generalErrorAlert');
         
-        // --- 3. VALIDAÇÃO INSTANTÂNEA DE ARQUIVO ---
+        // --- 3. VALIDAÇÃO INSTANTÂNEA DE ARQUIVOS (MÚLTIPLOS) ---
         if (fileInput) {
             fileInput.addEventListener('change', function() {
-                const file = this.files[0];
                 
-                // Limpa erros anteriores ao selecionar novo arquivo
+                // Limpa erros anteriores
                 this.classList.remove('is-invalid');
-                if(errorDiv) errorDiv.textContent = '';
+                if(errorDiv) {
+                    errorDiv.textContent = '';
+                    errorDiv.style.display = 'none';
+                }
 
-                // Se o usuário cancelar a seleção
-                if (!file) return;
+                // Se o usuário cancelar ou não selecionar nada
+                if (!this.files || this.files.length === 0) return;
 
-                // A) Valida Tamanho
-                if (file.size > MAX_SIZE_BYTES) {
-                    const msg = `O arquivo é muito grande (${(file.size / 1024 / 1024).toFixed(2)}MB). O limite é ${MAX_SIZE_MB}MB.`;
+                let totalSize = 0;
+                let invalidFiles = [];
+
+                // Itera sobre todos os arquivos selecionados
+                for (let i = 0; i < this.files.length; i++) {
+                    const file = this.files[i];
+                    const fileName = file.name.toLowerCase();
+
+                    // A) Soma o tamanho
+                    totalSize += file.size;
+
+                    // B) Valida Extensão Individualmente
+                    const isValidExt = ALLOWED_EXTS.some(ext => fileName.endsWith(ext));
+                    if (!isValidExt) {
+                        invalidFiles.push(file.name);
+                    }
+                }
+
+                // C) Erro de Extensão
+                if (invalidFiles.length > 0) {
+                    // Mostra apenas os primeiros nomes para não poluir muito
+                    const nomesExibidos = invalidFiles.slice(0, 3).join(', ') + (invalidFiles.length > 3 ? '...' : '');
+                    const msg = `Extensão não permitida no(s) arquivo(s): ${nomesExibidos}. Use apenas PDF, Imagens, Office, ZIP...`;
                     
-                    showError(this, msg); // Chama função de erro visual
-                    this.value = ''; // Limpa o input
+                    showError(this, msg);
+                    this.value = ''; // Limpa todos os arquivos
                     return;
                 }
 
-                // B) Valida Extensão
-                const fileName = file.name.toLowerCase();
-                const isValidExt = ALLOWED_EXTS.some(ext => fileName.endsWith(ext));
-                const extensao = file.name.split('.').pop();
-
-                if (!isValidExt) {
-                    const msg = `Extensão '.${extensao}' não permitido. Use apenas PDF, Imagens, Word, zip...`;
+                // D) Erro de Tamanho Total
+                if (totalSize > MAX_SIZE_BYTES) {
+                    const msg = `O tamanho total dos arquivos (${(totalSize / 1024 / 1024).toFixed(2)}MB) excede o limite de ${MAX_SIZE_MB}MB.`;
                     
-                    showError(this, msg); // Chama função de erro visual
-                    this.value = ''; // Limpa o input
+                    showError(this, msg);
+                    this.value = ''; // Limpa todos os arquivos
                     return;
                 }
             });
@@ -217,11 +238,20 @@
         // --- 4. FEEDBACK DE ENVIO (SPINNER) ---
         if (form) {
             form.addEventListener('submit', function(e) {
+                // Checa validade HTML5 padrão
                 if (!form.checkValidity()) {
                     e.preventDefault();
                     e.stopPropagation();
                     form.classList.add('was-validated');
                     return; 
+                }
+
+                // Bloqueia se o campo de arquivo estiver marcado como inválido pelo JS acima
+                if (fileInput && fileInput.classList.contains('is-invalid')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Opcional: focar no erro
+                    return;
                 }
 
                 var btn = document.getElementById('btnSubmit');
@@ -249,6 +279,7 @@
                     // Se for o campo de arquivo, limpa também a mensagem de texto
                     if(field.id === 'arquivo' && errorDiv) {
                         errorDiv.textContent = '';
+                        errorDiv.style.display = 'none';
                     }
                 }
 

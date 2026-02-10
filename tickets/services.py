@@ -56,10 +56,11 @@ class MaximoEmailService:
 
     @classmethod
     def enviar_ticket_maximo(
-        cls, ticket: Ticket, usuario: Cliente, arquivo_upload=None
+        cls, ticket: Ticket, usuario: Cliente, arquivos_upload: list | None = None
     ):
         """
         Orquestra o envio do e-mail de abertura para o Maximo.
+        Agora suporta uma lista de múltiplos anexos.
         """
         destinatario = settings.EMAIL_DESTINATION
         remetente = settings.DEFAULT_FROM_EMAIL
@@ -75,18 +76,26 @@ class MaximoEmailService:
         )
         email.content_subtype = "html"
 
-        if arquivo_upload:
-            try:
-                # Lógica de anexo encapsulada
-                arquivo_upload.seek(0)
-                nome = arquivo_upload.name
-                conteudo = arquivo_upload.read()
-                content_type = getattr(
-                    arquivo_upload, "content_type", "application/octet-stream"
-                )
-                email.attach(nome, conteudo, content_type)
-            except Exception as e:
-                logger.error(f"Erro ao anexar arquivo no service: {e}")
+        # Alteração: Iterar sobre a lista de arquivos
+        if arquivos_upload:
+            for arquivo in arquivos_upload:
+                try:
+                    # Garante que o cursor do arquivo está no início
+                    arquivo.seek(0)
+                    
+                    nome = arquivo.name
+                    conteudo = arquivo.read()
+                    
+                    # Tenta pegar o content_type (MIME) do objeto UploadedFile
+                    content_type = getattr(
+                        arquivo, "content_type", "application/octet-stream"
+                    )
+                    
+                    # Anexa cada arquivo individualmente
+                    email.attach(nome, conteudo, content_type)
+                    
+                except Exception as e:
+                    logger.error(f"Erro ao anexar arquivo '{getattr(arquivo, 'name', '?')}' no service: {e}")
 
         try:
             email.send()

@@ -118,35 +118,24 @@ class EmailAuthenticationForm(AuthenticationForm):
 class TicketForm(forms.ModelForm):
     """
     Formulário principal de abertura de chamados.
-    Adaptado para aceitar o campo HTML 'arquivo' e salvar no Model 'anexo'.
     """
 
-    # Campo explícito para bater com o name="arquivo" do seu HTML
+    # O nome aqui é 'arquivo' (singular), igual ao name no HTML
     arquivo = forms.FileField(
         required=False,
-        widget=forms.FileInput(attrs={"class": "form-control"}),
-        label="Anexo de Evidência",
+        widget=forms.FileInput(attrs={
+            "class": "form-control"
+        }),
+        label="Anexos de Evidência",
     )
 
     class Meta:
         model = Ticket
-        # Removemos 'anexo' da lista automática, pois vamos tratar manualmente via 'arquivo'
         fields = ["sumario", "descricao", "ambiente", "prioridade", "area"]
 
         widgets = {
-            "sumario": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Resumo curto do problema",
-                }
-            ),
-            "descricao": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 5,
-                    "placeholder": "Descreva detalhadamente o que aconteceu...",
-                }
-            ),
+            "sumario": forms.TextInput(attrs={"class": "form-control", "placeholder": "Resumo curto do problema"}),
+            "descricao": forms.Textarea(attrs={"class": "form-control", "rows": 5, "placeholder": "Descreva detalhadamente..."}),
             "ambiente": forms.Select(attrs={"class": "form-select"}),
             "prioridade": forms.Select(attrs={"class": "form-select"}),
             "area": forms.Select(attrs={"class": "form-select"}),
@@ -159,13 +148,11 @@ class TicketForm(forms.ModelForm):
         if user:
             self.fields["ambiente"].queryset = Ambiente.objects.filter(clientes=user)
 
-            location_str = (
-                str(user.location).upper() if getattr(user, "location", None) else ""
-            )
+            location_str = str(user.location).upper() if getattr(user, "location", None) else ""
             empresas_com_area = ["PAMPA", "ABL"]
-            tem_acesso_area = any(
-                empresa in location_str for empresa in empresas_com_area
-            )
+            
+            # Verifica se o usuário pertence a uma empresa que exige Área
+            tem_acesso_area = any(empresa in location_str for empresa in empresas_com_area)
 
             if tem_acesso_area:
                 self.fields["area"].queryset = Area.objects.filter(cliente=user)
@@ -176,23 +163,35 @@ class TicketForm(forms.ModelForm):
                 self.fields["area"].widget = forms.HiddenInput()
 
     def clean_arquivo(self):
-        """Valida o campo 'arquivo' vindo do HTML."""
-        # Usa a função de validação comum que criamos anteriormente
-        return _validar_anexo_comum(self.cleaned_data.get("arquivo"))
+        """
+        Valida a lista de arquivos.
+        """
+        # CORREÇÃO 1: Usar 'arquivo' (singular) para bater com o nome do campo
+        arquivos = self.files.getlist("arquivo")
+        
+        if not arquivos:
+            return None
+
+        for f in arquivos:
+            # Valida cada arquivo individualmente usando sua função utilitária
+            _validar_anexo_comum(f)
+        
+        # Retorna a lista validada (embora a view vá usar request.FILES.getlist)
+        return arquivos
 
     def save(self, commit=True):
-        """Move o arquivo validado para o campo correto do modelo antes de salvar."""
+        """
+        Sobrescrevemos o save para garantir que não tente salvar 'arquivo' no Ticket.
+        O salvamento dos anexos é feito na View criar_ticket.
+        """
         ticket = super().save(commit=False)
-
-        # Pega o arquivo limpo e validado
-        arquivo_validado = self.cleaned_data.get("arquivo")
-
-        if arquivo_validado:
-            # Mapeia: Form 'arquivo' -> Model 'anexo'
-            ticket.anexo = arquivo_validado
-
+        
+        # CORREÇÃO 2: Removemos a lógica de ticket.anexo = ...
+        # O formulário agora cuida apenas dos dados textuais do Ticket.
+        
         if commit:
             ticket.save()
+            
         return ticket
 
 
@@ -200,20 +199,12 @@ class TicketForm(forms.ModelForm):
 
 
 class TicketInteracaoForm(forms.ModelForm):
-    """
-    Formulário para adicionar comentários/respostas ao ticket.
-    """
-
+    # ... (Mantenha o resto igual)
     class Meta:
         model = TicketInteracao
         fields = ["mensagem", "anexo"]
         widgets = {
-            "mensagem": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 3,
-                }
-            ),
+            "mensagem": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "anexo": forms.FileInput(attrs={"class": "form-control"}),
         }
 
