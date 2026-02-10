@@ -89,7 +89,10 @@
                                     {% if ticket.maximo_id %}
                                         #{{ ticket.maximo_id }}
                                     {% else %}
-                                        <span class="spinner-border spinner-border-sm text-secondary me-1">Sync...</span>
+                                        <span class="text-muted fst-italic" style="font-size: 0.85rem;">
+                                            <div class="spinner-border spinner-border-sm text-secondary me-1" role="status" style="width: 0.7rem; height: 0.7rem;"></div>
+                                            Sincronizando...
+                                        </span>
                                     {% endif %}
                                 </td>
                                 <td>
