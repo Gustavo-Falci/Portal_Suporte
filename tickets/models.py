@@ -221,6 +221,15 @@ class Ticket(models.Model):
     def tem_anexos(self):
         """Retorna True se houver pelo menos um arquivo anexado."""
         return self.anexos.exists()
+    
+    @property
+    def is_closed(self) -> bool:
+        """
+        Verifica se o ticket está em um estado terminal onde interações não são mais permitidas.
+        """
+        # Ajuste as strings abaixo conforme estão EXATAMENTE no seu banco/choices
+        status_terminais = ['RESOLVED', 'CLOSED', 'CANCELLED']
+        return self.status_maximo in status_terminais
         
 class TicketAnexo(models.Model):
     """

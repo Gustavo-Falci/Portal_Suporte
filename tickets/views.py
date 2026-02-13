@@ -143,6 +143,21 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
         return redirect("tickets:meus_tickets")
 
     if request.method == "POST":
+
+        if ticket.is_closed:
+            msg_erro = "Este ticket já foi encerrado/resolvido. Não é possível enviar novas mensagens."
+
+            # Se a requisição veio via AJAX (JS), retorna JSON de erro
+            if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                return JsonResponse({
+                    "status": "error", 
+                    "errors": {"global": msg_erro} # Estrutura genérica de erro
+                }, status=403) # 403 Forbidden
+
+            # Se for requisição normal, Flash Message e Redirect
+            messages.error(request, msg_erro)
+            return redirect("tickets:detalhe_ticket", pk=pk)
+        
         form = TicketInteracaoForm(request.POST, request.FILES)
         if form.is_valid():
             interacao = form.save(commit=False)

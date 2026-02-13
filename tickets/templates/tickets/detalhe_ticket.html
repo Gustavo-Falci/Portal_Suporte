@@ -91,38 +91,53 @@
                 {% endfor %}
             </div>
 
-            <div class="card bg-light border-0 rounded-0 mb-5">
-                <div class="card-body">
-                    <h6 class="fw-bold mb-3">Nova Mensagem</h6>
-                    
-                    <form method="post" enctype="multipart/form-data" id="chatForm" novalidate>
-                        {% csrf_token %}
-                        
-                        <div class="mb-3">
-                            {{ form.mensagem }}
-
-                            <div id="msgError" class="invalid-feedback text-start"></div>
+            {% if ticket.is_closed %}
+                <div class="alert alert-secondary text-center mb-5 shadow-sm rounded-0" role="alert">
+                    <div class="d-flex align-items-center justify-content-center py-4">
+                        <i class="bi bi-lock-fill fs-1 me-3 text-secondary opacity-50"></i>
+                        <div class="text-start">
+                            <h5 class="alert-heading fw-bold mb-1">Chat Encerrado</h5>
+                            <p class="mb-0 small text-muted">
+                                Este ticket está com status <span class="badge bg-secondary font-monospace">{{ ticket.get_status_maximo_display }}</span>.
+                                <br>Não é possível enviar novas mensagens.
+                            </p>
                         </div>
-                        
-                        <div class="row align-items-center">
-                            <div class="col-md-8 mb-2 mb-md-0">
-                                <div class="input-group input-group-sm">
-                                    <span class="input-group-text rounded-0 bg-white border-secondary border-opacity-25">📎 Anexar</span>
-                                    {{ form.anexo }}
-                                </div>
-                                
-                                <div id="fileErrorMsg" class="text-danger small fw-bold mt-1 d-none"></div> 
-                            </div>
-                            <div class="col-md-4 text-end">
-                                <button type="submit" class="btn btn-primary rounded-0 px-4 w-100">
-                                    Enviar
-                                </button>
-                            </div>
-                        </div>
-                    </form>
+                    </div>
                 </div>
+            {% else %}
+                <div class="card bg-light border-0 rounded-0 mb-5">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3">Nova Mensagem</h6>
+                        
+                        <form method="post" enctype="multipart/form-data" id="chatForm" novalidate>
+                            {% csrf_token %}
+                            
+                            <div class="mb-3">
+                                {{ form.mensagem }}
+
+                                <div id="msgError" class="invalid-feedback text-start"></div>
+                            </div>
+                            
+                            <div class="row align-items-center">
+                                <div class="col-md-8 mb-2 mb-md-0">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text rounded-0 bg-white border-secondary border-opacity-25">📎 Anexar</span>
+                                        {{ form.anexo }}
+                                    </div>
+                                    
+                                    <div id="fileErrorMsg" class="text-danger small fw-bold mt-1 d-none"></div> 
+                                </div>
+                                <div class="col-md-4 text-end">
+                                    <button type="submit" class="btn btn-primary rounded-0 px-4 w-100">
+                                        Enviar
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            {% endif %}
             </div>
-        </div>
 
         <div class="col-md-4">
             <div class="card shadow-sm rounded-0 mb-3 border-primary">

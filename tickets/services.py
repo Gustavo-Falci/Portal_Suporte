@@ -1,7 +1,6 @@
 import logging
 import json
 import requests
-import urllib3
 from django.core.mail import EmailMessage
 from django.conf import settings
 from .models import Ticket, TicketInteracao, Cliente, Notificacao
@@ -19,9 +18,6 @@ class MaximoEmailService:
         """
         Gera o corpo técnico exigido pelo Maximo Listener.
         """
-        # ... (Mantenha sua lógica atual de formatação das tags SR# aqui) ...
-        # Copie o conteúdo do seu método gerar_corpo_email atual para cá
-        # Estou renomeando para ser mais específico
         descricao_limpa = strip_tags(ticket.descricao).replace('\n', '<br>')
         sumario_limpo = strip_tags(ticket.sumario)
         prioridade = ticket.prioridade
@@ -76,22 +72,18 @@ class MaximoEmailService:
         )
         email.content_subtype = "html"
 
-        # Alteração: Iterar sobre a lista de arquivos
         if arquivos_upload:
             for arquivo in arquivos_upload:
                 try:
-                    # Garante que o cursor do arquivo está no início
                     arquivo.seek(0)
                     
                     nome = arquivo.name
                     conteudo = arquivo.read()
                     
-                    # Tenta pegar o content_type (MIME) do objeto UploadedFile
                     content_type = getattr(
                         arquivo, "content_type", "application/octet-stream"
                     )
                     
-                    # Anexa cada arquivo individualmente
                     email.attach(nome, conteudo, content_type)
                     
                 except Exception as e:
