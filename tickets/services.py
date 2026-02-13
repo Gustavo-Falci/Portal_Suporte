@@ -98,51 +98,6 @@ class MaximoEmailService:
             # Opcional: Levantar exceção se quiser que a View trate o erro visualmente
             # raise e
 
-    @staticmethod
-    def enviar_notificacao_chat(
-        ticket: Ticket, interacao: TicketInteracao, autor: Cliente
-    ):
-        """
-        Envia notificação de interação (Chat).
-        """
-        email_suporte = getattr(
-            settings, "SUPPORT_EMAIL_ADDRESS", "suportebr@itconsol.com"
-        )
-        remetente = settings.DEFAULT_FROM_EMAIL
-
-        is_support_msg = autor.is_support_team
-
-        if is_support_msg:
-            # Suporte -> Cliente
-            assunto = f"[Portal Suporte] Nova resposta no Ticket #{ticket.maximo_id} - {ticket.sumario}"
-            destinatarios = [ticket.cliente.email]
-            corpo = f"""
-            Olá, {ticket.cliente.first_name or ticket.cliente.username}.<br><br>
-            A equipe de suporte respondeu ao ticket <strong>#{ticket.maximo_id}</strong>.<br>
-            <div style="background-color: #f4f4f4; padding: 10px; border-left: 4px solid #0f62fe;">
-                {interacao.mensagem}
-            </div>
-            """
-        else:
-            # Cliente -> Suporte
-            assunto = f"[Alerta] Cliente respondeu o Ticket #{ticket.maximo_id} - {ticket.sumario}"
-            destinatarios = [email_suporte]
-            location = getattr(ticket.cliente, "location", "N/A")
-            corpo = f"""
-            O cliente <strong>{ticket.cliente.username}</strong> ({location}) enviou mensagem.<br>
-            <strong>Ticket:</strong> #{ticket.maximo_id}<br>
-            <div style="background-color: #f4f4f4; padding: 10px; border-left: 4px solid #198038;">
-                {interacao.mensagem}
-            </div>
-            """
-
-        if destinatarios:
-            msg = EmailMessage(
-                subject=assunto, body=corpo, from_email=remetente, to=destinatarios
-            )
-            msg.content_subtype = "html"
-            msg.send()
-
 
 class NotificationService:
     """
@@ -211,93 +166,87 @@ class NotificationService:
     @classmethod
     def notificar_nova_interacao(cls, ticket: Ticket, interacao: TicketInteracao):
         """
-        Gerencia TUDO relacionado a uma nova mensagem no chat (substitui enviar_notificacao_chat).
-        Lógica:
-        - Se SUPORTE respondeu -> Notifica CLIENTE.
-        - Se CLIENTE respondeu -> Notifica EQUIPA DE SUPORTE.
+        Envia notificação apenas para os envolvidos:
+        1. Cliente dono do ticket.
+        2. Consultor responsável (Owner do Ticket).
+        3. Membros do grupo 'lider_suporte'.
+        * O autor da mensagem nunca é notificado.
         """
-        autor = interacao.autor
+        try:
+            # 1. Identificar Destinatários (Set para evitar duplicatas)
+            destinatarios = set()
 
-        # Pega e-mail de suporte do settings ou usa um padrão de segurança
-        email_suporte_geral = getattr(
-            settings, "SUPPORT_EMAIL_ADDRESS", "suportebr@itconsol.com"
-        )
+            # A. Adiciona o Cliente (Dono do Ticket)
+            if ticket.cliente and ticket.cliente.email:
+                destinatarios.add(ticket.cliente)
 
-        # Texto de pré-visualização para a notificação do sininho
-        preview_msg = (
-            f"{autor.first_name or autor.username}: {interacao.mensagem[:60]}..."
-        )
+            # B. Adiciona o Consultor Responsável (Owner)
+            # O campo ticket.owner é uma string (PersonID). Precisamos do objeto Cliente/User.
+            if ticket.owner:
+                # Busca Case-Insensitive pelo person_id
+                consultor = Cliente.objects.filter(person_id__iexact=ticket.owner).first()
+                if consultor and consultor.email:
+                    destinatarios.add(consultor)
 
-        # === DEFINIÇÃO DE QUEM RECEBE ===
-        if autor.is_support_team:
-            # CENÁRIO A: Suporte respondeu -> O Cliente é o destinatário
-            destinatarios_internos = [ticket.cliente]
-            destinatarios_email = [ticket.cliente.email]
+            # C. Adiciona o Grupo de Líderes
+            lideres = Cliente.objects.filter(groups__name="lider_suporte")
+            for lider in lideres:
+                if lider.email:
+                    destinatarios.add(lider)
 
-            titulo_notif = "Nova Resposta"
-            assunto_email = (
-                f"[Portal Suporte] Nova resposta no Ticket #{ticket.maximo_id}"
-            )
+            # D. Remove o Autor da Mensagem (quem mandou não deve receber notificação)
+            if interacao.autor in destinatarios:
+                destinatarios.remove(interacao.autor)
 
-            corpo_email = f"""
-            Olá, {ticket.cliente.first_name or ticket.cliente.username}.<br><br>
-            A equipe de suporte respondeu ao ticket <strong>#{ticket.maximo_id}</strong>.<br><br>
-            <div style="background-color: #f4f4f4; padding: 15px; border-left: 4px solid #0f62fe;">
-                {interacao.mensagem}
-            </div>
-            <br>Acesse o portal para responder.
-            """
+            # 2. Preparar Conteúdo
+            autor_nome = interacao.autor.get_full_name() or interacao.autor.username
+            preview_msg = f"{autor_nome}: {interacao.mensagem[:60]}..."
+            assunto = f"[Portal Suporte] Nova mensagem no Ticket #{ticket.maximo_id or ticket.id}"
+            
+            # Link para o ticket
+            link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
+            base_url = getattr(settings, "SITE_URL", "") # Define SITE_URL no settings.py para links absolutos
+            full_link = f"{base_url}{link_relativo}"
 
-        else:
-            # CENÁRIO B: Cliente respondeu -> A Equipa de Suporte é o destinatário
-            # 1. Busca todos os utilizadores que são Staff ou Consultores
-            staff_users = Cliente.objects.filter(
-                Q(is_staff=True) | Q(groups__name="Consultores")
-            ).distinct()
+            notificacoes_db = []
 
-            destinatarios_internos = staff_users
-            destinatarios_email = [
-                email_suporte_geral
-            ]  # E-mail vai para a caixa partilhada
-
-            titulo_notif = "Cliente Respondeu"
-            assunto_email = f"[Alerta] Cliente respondeu Ticket #{ticket.maximo_id}"
-            local_cliente = getattr(ticket.cliente, "location", "Local N/A")
-
-            corpo_email = f"""
-            O cliente <strong>{ticket.cliente.username}</strong> ({local_cliente}) enviou uma mensagem.<br><br>
-            <strong>Ticket:</strong> #{ticket.maximo_id}<br>
-            <strong>Sumário:</strong> {ticket.sumario}<br><br>
-            <div style="background-color: #f4f4f4; padding: 15px; border-left: 4px solid #198038;">
-                {interacao.mensagem}
-            </div>
-            """
-
-        # === 1. CRIAÇÃO DAS NOTIFICAÇÕES INTERNAS (Bulk Create) ===
-        # Usamos bulk_create para ser rápido, mesmo se houver 50 consultores.
-        notificacoes_db = []
-        for usuario in destinatarios_internos:
-            # Se for staff, adiciona ?origin=fila ao link para facilitar a navegação
-            link_destino = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
-            if usuario.is_support_team:
-                link_destino += "?origin=fila"
-
-            notificacoes_db.append(
-                Notificacao(
-                    destinatario=usuario,
-                    ticket=ticket,
-                    titulo=titulo_notif,
-                    tipo="mensagem",
-                    mensagem=preview_msg,
-                    link=link_destino,
+            # 3. Loop de Envio
+            for usuario in destinatarios:
+                # --- A. Notificação Interna (Sino) ---
+                notificacoes_db.append(
+                    Notificacao(
+                        destinatario=usuario,
+                        ticket=ticket,
+                        titulo="Nova Mensagem",
+                        tipo="mensagem",
+                        mensagem=preview_msg,
+                        link=link_relativo,
+                    )
                 )
-            )
 
-        if notificacoes_db:
-            Notificacao.objects.bulk_create(notificacoes_db)
+                # --- B. Envio de E-mail ---
+                corpo_email = f"""
+                Olá, {usuario.first_name or usuario.username}.<br><br>
+                Houve uma nova interação no ticket <strong>#{ticket.maximo_id or ticket.id}</strong> - {ticket.sumario}.<br><br>
+                
+                <div style="background-color: #f4f4f4; padding: 15px; border-left: 4px solid #0f62fe;">
+                    <strong>{autor_nome}:</strong><br>
+                    {interacao.mensagem}
+                </div>
+                <br>
+                <a href="{full_link}">Clique aqui para responder no portal</a>
+                """
+                
+                # Envia individualmente para cada destinatário
+                cls._enviar_email_generico([usuario.email], assunto, corpo_email)
 
-        # === 2. ENVIO DO E-MAIL ===
-        cls._enviar_email_generico(destinatarios_email, assunto_email, corpo_email)
+            # 4. Grava notificações no banco em lote
+            if notificacoes_db:
+                Notificacao.objects.bulk_create(notificacoes_db)
+
+        except Exception as e:
+            logger.error(f"Erro no fluxo de notificação (Ticket {ticket.id}): {e}")
+
 
 class MaximoSenderService:
     """
