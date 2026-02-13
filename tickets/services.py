@@ -267,8 +267,15 @@ class MaximoSenderService:
             return False
 
         # 1. Definição do Tipo de Log e Autor
-        # Se for Staff/Suporte = WORK, Se for Cliente = CLIENTNOTE
-        if interacao.autor.is_staff or getattr(interacao.autor, 'is_support_team', False):
+        # Regra: Se for Staff, Support Team, Grupo Consultores OU Grupo Lider Suporte -> WORK
+
+        eh_interno = (
+            interacao.autor.is_staff or 
+            getattr(interacao.autor, 'is_support_team', False) or
+            interacao.autor.groups.filter(name__in=["Consultores", "lider_suporte"]).exists()
+        )
+
+        if eh_interno:
             log_type = "WORK"
             descricao_curta = "Nota do Consultor"
         else:
