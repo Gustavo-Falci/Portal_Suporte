@@ -123,23 +123,25 @@ class Command(BaseCommand):
     def _processar_logs(self, ticket, logs, bot_user) -> int:
         count = 0
         for log in logs:
-            # --- NOVO FILTRO ---
+            # --- 1. FILTRO DE TIPO ---
             # Filtra apenas logs do tipo CLIENTNOTE
             tipo = log.get("logtype", "")
             if tipo != "CLIENTNOTE":
                 continue
-            # -------------------
+            
+            autor = log.get("createby", "SUPORTE").upper()
+            if autor in ["MXINTADM"]: # Adicione outros usuários de integração se houver
+                continue
 
             # Pega descrição (Longa tem prioridade)
             texto_bruto = log.get("description_longdescription") or log.get("description")
             
-            # Chama a função simplificada
+            # Chama a função simplificada de limpeza
             msg_final_limpa = self._clean_html(texto_bruto)
             
             if not msg_final_limpa:
                 continue
 
-            autor = log.get("createby", "SUPORTE")
             mensagem_formatada = f"📋 [{autor}]\n\n{msg_final_limpa}"
 
             # Verifica se já existe (Idempotência)
