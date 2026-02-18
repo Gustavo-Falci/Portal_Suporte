@@ -9,121 +9,159 @@
 {% block content %}
 
 <style>
+    /* Neutraliza o margin-top padrão do base_no_nav.html para centralizar perfeitamente */
+    body > .container {
+        margin-top: 0 !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+    }
+
     /* CONFIGURAÇÃO DA IMAGEM DE FUNDO */
     .hero-background {
         position: fixed;
         top: 0;
         left: 0;
-        width: 100vw; /* Garante 100% da largura da janela (Viewport Width) */
+        width: 100vw;
         height: 100vh; 
-
         background-image: url('{% static "tickets/img/fundo_login.jpg" %}');
         background-size: 100% 100%; 
-        background-position: top center; 
+        background-position: center; 
         background-repeat: no-repeat;
         z-index: -1;
-        
-        border-bottom: 4px solid var(--ibm-blue-60); 
     }
 
-    /* Opcional: Em telas muito largas (Monitores Ultrawide), ajustamos para não cortar tanto */
-    @media (min-width: 1900px) {
-        .hero-background {
-            background-position: center 30%; /* Sobe um pouco o foco */
-        }
-    }
-
-    /* Camada Escura para melhorar leitura */
     .hero-background::before {
         content: "";
         position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0.1));
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(15, 36, 62, 0.45); /* Overlay escuro baseado no azul IBM */
+        border-bottom: 4px solid var(--ibm-blue-60, #0f62fe);
     }
 
+    /* ESTILO DO NOVO SPLIT CARD */
+    .login-split-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+    }
+
+    /* LADO DA MARCA (ESQUERDO) */
+    .brand-side {
+        background: linear-gradient(135deg, var(--ibm-blue-60, #0f62fe) 0%, #051b3b 100%);
+        color: white;
+        position: relative;
+    }
+    
+    .brand-side::after {
+        content: "";
+        position: absolute;
+        bottom: -50px; left: -50px;
+        width: 200px; height: 200px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 50%;
+    }
+
+    .form-control:focus {
+        border-color: var(--ibm-blue-60, #0f62fe);
+        box-shadow: 0 0 0 0.25rem rgba(15, 98, 254, 0.25);
+    }
+
+    .custom-switch .form-check-input {
+        width: 2.5em;
+        height: 1.25em;
+        cursor: pointer;
+        border-color: rgba(0, 0, 0, 0.2);
+        transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+    }
+    
+    .custom-switch .form-check-input:focus {
+        box-shadow: 0 0 0 0.25rem rgba(15, 98, 254, 0.25); /* Glow azul */
+        border-color: var(--ibm-blue-60, #0f62fe);
+    }
+    
+    .custom-switch .form-check-input:checked {
+        background-color: var(--ibm-blue-60, #0f62fe);
+        border-color: var(--ibm-blue-60, #0f62fe);
+    }
+    
+    .custom-switch .form-check-label {
+        cursor: pointer;
+        user-select: none; /* Impede o usuário de selecionar o texto sem querer ao clicar */
+        padding-top: 2px;
+    }
 </style>
 
 <div class="hero-background"></div>
 
-<div class="container d-flex align-items-center justify-content-center" style="min-height: 80vh;">
-    <div class="card login-container w-100 shadow-sm" style="max-width: 400px;">
-        <div class="card-body">
+<div class="w-100" style="max-width: 1000px;">
+    <div class="card login-split-card rounded-4 border-0">
+        <div class="row g-0">
             
-            {% if not is_troca_senha %}
-                <div class="text-center mb-4">
-                    <h3 class="fw-bold mb-1">Bem-vindo</h3>
-                    <p class="text-muted small">Faça login para acessar o Portal</p>
+            <div class="col-md-5 col-lg-6 d-none d-md-flex flex-column justify-content-between p-5 brand-side">
+                <div>
+                    <img src="{% static 'tickets/img/ITCONSOL.png' %}" alt="IT Consol" class="mb-4" style="max-height: 50px; filter: brightness(0) invert(1);">
+                    <h2 class="fw-bold mb-3 font-monospace">Portal de Suporte</h2>
+                    <p class="opacity-75" style="font-size: 0.95rem;">
+                        Gestão centralizada de tickets. Acompanhe suas solicitações em tempo real.
+                    </p>
+                </div>
+                
+                <div class="mt-auto">
+                    <div class="d-flex align-items-center opacity-75 small">
+                        <i class="fa-solid fa-shield-halved me-2"></i>
+                        Acesso restrito e seguro
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-7 col-lg-6 p-4 p-md-5 d-flex flex-column justify-content-center">
+                
+                <div class="text-center mb-4 d-md-none">
+                    <img src="{% static 'tickets/img/ITCONSOL.png' %}" alt="IT Consol" style="max-height: 50px;">
                 </div>
 
+                <h3 class="fw-bold mb-1 text-dark">Bem-vindo(a)</h3>
+                <p class="text-muted mb-4 small">Insira suas credenciais para acessar o portal.</p>
+
                 {% if form.errors %}
-                    <div id="generalErrorAlert" class="text-center mb-4 fade show">
-                        <div class="d-inline-flex align-items-center text-danger fw-bold small">
-                            <i class="fa-solid fa-circle-exclamation me-2"></i>
-                            <span>E-mail ou senha incorretos.</span>
-                        </div>
-                    </div>
+                <div id="generalErrorAlert" class="alert alert-danger border-0 rounded-3 small py-2 d-flex align-items-center">
+                    <i class="fa-solid fa-circle-exclamation me-2"></i>
+                    E-mail ou senha inválidos.
+                </div>
                 {% endif %}
 
-                <form method="post" id="loginForm" novalidate>
+                <form method="post" id="loginForm">
                     {% csrf_token %}
+                    
                     <div class="form-floating mb-3">
-                        <input type="text" name="username" class="form-control {% if form.username.errors %}is-invalid{% endif %}" id="floatingInput" placeholder="seu@email.com" value="{{ form.username.value|default:'' }}" autofocus>
-                        <label for="floatingInput">E-mail</label>
+                        <input type="email" name="username" class="form-control rounded-3 {% if form.errors %}is-invalid{% endif %}" id="floatingEmail" placeholder="nome@exemplo.com">
+                        <label for="floatingEmail" class="text-muted"><i class="fa-regular fa-envelope me-2"></i>E-mail corporativo</label>
                     </div>
 
                     <div class="form-floating mb-4">
-                        <input type="password" name="password" class="form-control {% if form.password.errors %}is-invalid{% endif %}" id="floatingPassword" placeholder="Senha">
-                        <label for="floatingPassword">Senha</label>
+                        <input type="password" name="password" class="form-control rounded-3 {% if form.errors %}is-invalid{% endif %}" id="floatingPassword" placeholder="Senha">
+                        <label for="floatingPassword" class="text-muted"><i class="fa-solid fa-lock me-2"></i>Senha</label>
                     </div>
 
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-lg" id="btnSubmit">
-                            <span class="spinner-border spinner-border-sm d-none me-2" role="status"></span>
-                            <i class="fa-solid fa-arrow-right-to-bracket me-2" id="btnIcon"></i>
-                            <span class="btn-text">Entrar</span>
-                        </button>
+                    <div class="form-check form-switch custom-switch mb-4 d-flex align-items-center gap-2 ps-0">
+                        <input class="form-check-input m-0 shadow-none" type="checkbox" role="switch" name="remember_me" value="true" id="rememberMe">
+                        <label class="form-check-label small text-muted fw-medium" for="rememberMe">
+                            Manter-me conectado
+                        </label>
                     </div>
+
+                    <button type="submit" class="btn btn-primary w-100 rounded-3 py-2 fw-bold d-flex justify-content-center align-items-center" id="btnSubmit" style="background-color: var(--ibm-blue-60, #0f62fe); border: none;">
+                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
+                        <span class="btn-text">Entrar</span>
+                        <i class="fa-solid fa-arrow-right-to-bracket ms-2"></i>
+                    </button>
                 </form>
-            {% else %}
-                <div class="text-center mb-4">
-                    <h3 class="fw-bold mb-1 text-primary">Primeiro Acesso</h3>
-                    <p class="text-muted small">Por segurança, defina uma nova senha para sua conta.</p>
-                </div>
 
-                <form method="post" id="passwordForm" novalidate>
-                    {% csrf_token %}
-                    
-                    {% for field in form_troca_senha %}
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">{{ field.label }}</label>
-                            <input type="{{ field.field.widget.input_type }}" 
-                                   name="{{ field.name }}" 
-                                   class="form-control {% if field.errors %}is-invalid{% endif %}"
-                                   placeholder="Digite sua nova senha">
-                            {% if field.errors %}
-                                <div class="invalid-feedback">{{ field.errors.0 }}</div>
-                            {% endif %}
-                            {% if field.help_text %}
-                                <div class="form-text small" style="font-size: 0.7rem;">{{ field.help_text|safe }}</div>
-                            {% endif %}
-                        </div>
-                    {% endfor %}
-
-                    <div class="d-grid mt-4">
-                        <button type="submit" class="btn btn-success btn-lg" id="btnSavePassword">
-                            <span class="spinner-border spinner-border-sm d-none me-2" role="status"></span>
-                            <i class="fa-solid fa-check me-2" id="saveIcon"></i>
-                            <span class="save-text">Definir Senha e Entrar</span>
-                        </button>
-                    </div>
-                </form>
-            {% endif %}
-
-            <div class="text-center mt-4">
-                <small class="text-muted">Suporte: <a href="mailto:suportebr@itconsol.com" class="text-decoration-none text-muted fw-bold">suportebr@itconsol.com</a></small>
             </div>
         </div>
     </div>
@@ -131,7 +169,6 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Função para ativar spinner em qualquer formulário
         const setupLoader = (formId, btnId, textLoading) => {
             const form = document.getElementById(formId);
             if (!form) return;
@@ -149,9 +186,8 @@
         };
 
         setupLoader('loginForm', 'btnSubmit', 'Autenticando...');
-        setupLoader('passwordForm', 'btnSavePassword', 'Salvando...');
+        setupLoader('passwordForm', 'btnSavePassword', 'Enviando...');
 
-        // Limpeza de erros ao digitar
         document.querySelectorAll('.is-invalid').forEach(field => {
             field.addEventListener('input', function() {
                 this.classList.remove('is-invalid');
