@@ -134,7 +134,7 @@
                         type="file" 
                         id="id_documento_requisicao" 
                         name="documento_requisicao"
-                        accept=".pdf,.doc,.docx">
+                        accept=".docx">
 
                     {% if form.documento_requisicao.errors %}
                         <div class="invalid-feedback text-start d-block">
@@ -194,81 +194,118 @@
         // --- 1. CONFIGURAÇÕES ---
         const MAX_SIZE_MB = 150;
         const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
-        const ALLOWED_EXTS = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv', '.zip', '.rar', '.xml', '.pptx', '.ppt'];
+        const ALLOWED_EXTS_MULTIPLE = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv', '.zip', '.rar', '.xml', '.pptx', '.ppt'];
+        const ALLOWED_EXTS_DOC_REQ = ['.docx'];
 
         // --- 2. SELETORES ---
+        // Campo de evidências (Múltiplos)
         const fileInput = document.getElementById('arquivo'); 
-        const errorDiv = document.getElementById('jsFileError'); // A nova div de erro
+        const errorDiv = document.getElementById('jsFileError'); 
+
+        // Novo campo (Documento de Requisição)
+        const docReqInput = document.getElementById('id_documento_requisicao');
+        // Vamos criar a div de erro dinamicamente se ela não existir no HTML, para facilitar
+        let docReqErrorDiv = null;
+        if (docReqInput) {
+            docReqErrorDiv = document.createElement('div');
+            docReqErrorDiv.id = 'jsDocReqError';
+            docReqErrorDiv.className = 'invalid-feedback text-start mt-2 fw-bold';
+            // Insere a div logo após o input
+            docReqInput.parentNode.insertBefore(docReqErrorDiv, docReqInput.nextSibling);
+        }
+
         const form = document.getElementById('ticketForm');
         const generalAlert = document.getElementById('generalErrorAlert');
         
-        // --- 3. VALIDAÇÃO INSTANTÂNEA DE ARQUIVOS (MÚLTIPLOS) ---
+        // --- 3. VALIDAÇÃO INSTANTÂNEA: EVIDÊNCIAS (MÚLTIPLOS) ---
         if (fileInput) {
             fileInput.addEventListener('change', function() {
-                
-                // Limpa erros anteriores
                 this.classList.remove('is-invalid');
                 if(errorDiv) {
                     errorDiv.textContent = '';
                     errorDiv.style.display = 'none';
                 }
 
-                // Se o usuário cancelar ou não selecionar nada
                 if (!this.files || this.files.length === 0) return;
 
                 let totalSize = 0;
                 let invalidFiles = [];
 
-                // Itera sobre todos os arquivos selecionados
                 for (let i = 0; i < this.files.length; i++) {
                     const file = this.files[i];
                     const fileName = file.name.toLowerCase();
 
-                    // A) Soma o tamanho
                     totalSize += file.size;
 
-                    // B) Valida Extensão Individualmente
-                    const isValidExt = ALLOWED_EXTS.some(ext => fileName.endsWith(ext));
+                    const isValidExt = ALLOWED_EXTS_MULTIPLE.some(ext => fileName.endsWith(ext));
                     if (!isValidExt) {
                         invalidFiles.push(file.name);
                     }
                 }
 
-                // C) Erro de Extensão
                 if (invalidFiles.length > 0) {
-                    // Mostra apenas os primeiros nomes para não poluir muito
                     const nomesExibidos = invalidFiles.slice(0, 3).join(', ') + (invalidFiles.length > 3 ? '...' : '');
                     const msg = `Extensão não permitida no(s) arquivo(s): ${nomesExibidos}. Use apenas PDF, Imagens, Office, ZIP...`;
-                    
-                    showError(this, msg);
-                    this.value = ''; // Limpa todos os arquivos
+                    showError(this, errorDiv, msg);
+                    this.value = ''; 
                     return;
                 }
 
-                // D) Erro de Tamanho Total
                 if (totalSize > MAX_SIZE_BYTES) {
                     const msg = `O tamanho total dos arquivos (${(totalSize / 1024 / 1024).toFixed(2)}MB) excede o limite de ${MAX_SIZE_MB}MB.`;
-                    
-                    showError(this, msg);
-                    this.value = ''; // Limpa todos os arquivos
+                    showError(this, errorDiv, msg);
+                    this.value = ''; 
                     return;
                 }
             });
         }
 
-        // Função auxiliar para mostrar o erro sem alert
-        function showError(input, message) {
-            input.classList.add('is-invalid'); // Deixa borda vermelha
-            if (errorDiv) {
-                errorDiv.innerText = message; // Coloca o texto na div
-                errorDiv.style.display = 'block'; // Garante que aparece
+        // --- 4. VALIDAÇÃO INSTANTÂNEA: DOCUMENTO DE REQUISIÇÃO ---
+        if (docReqInput) {
+            docReqInput.addEventListener('change', function() {
+                this.classList.remove('is-invalid');
+                if (docReqErrorDiv) {
+                    docReqErrorDiv.textContent = '';
+                    docReqErrorDiv.style.display = 'none';
+                }
+
+                if (!this.files || this.files.length === 0) return;
+
+                const file = this.files[0];
+                const fileName = file.name.toLowerCase();
+
+                // Valida Extensão (.docx estrito)
+                const isValidExt = ALLOWED_EXTS_DOC_REQ.some(ext => fileName.endsWith(ext));
+                if (!isValidExt) {
+                    const msg = `Formato inválido. O Documento de Requisição deve ser um arquivo .docx, baixe o modelo.`;
+                    showError(this, docReqErrorDiv, msg);
+                    this.value = ''; // Limpa o campo imediatamente
+                    return;
+                }
+
+                // Valida Tamanho
+                if (file.size > MAX_SIZE_BYTES) {
+                    const msg = `O tamanho do arquivo (${(file.size / 1024 / 1024).toFixed(2)}MB) excede o limite.`;
+                    showError(this, docReqErrorDiv, msg);
+                    this.value = ''; 
+                    return;
+                }
+            });
+        }
+
+        // --- 5. FUNÇÃO AUXILIAR DE EXIBIR ERRO ---
+        // Agora recebe a div específica onde o erro deve ser mostrado
+        function showError(input, targetErrorDiv, message) {
+            input.classList.add('is-invalid'); 
+            if (targetErrorDiv) {
+                targetErrorDiv.innerText = message; 
+                targetErrorDiv.style.display = 'block'; 
             }
         }
 
-        // --- 4. FEEDBACK DE ENVIO (SPINNER) ---
+        // --- 6. FEEDBACK DE ENVIO E BLOQUEIO DE SUBMIT (SPINNER) ---
         if (form) {
             form.addEventListener('submit', function(e) {
-                // Checa validade HTML5 padrão
                 if (!form.checkValidity()) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -276,12 +313,14 @@
                     return; 
                 }
 
-                // Bloqueia se o campo de arquivo estiver marcado como inválido pelo JS acima
-                if (fileInput && fileInput.classList.contains('is-invalid')) {
+                // Verifica se QUALQUER UM dos dois inputs de arquivo está inválido
+                const hasFileError = (fileInput && fileInput.classList.contains('is-invalid'));
+                const hasDocReqError = (docReqInput && docReqInput.classList.contains('is-invalid'));
+
+                if (hasFileError || hasDocReqError) {
                     e.preventDefault();
                     e.stopPropagation();
-                    // Opcional: focar no erro
-                    return;
+                    return; // Bloqueia o envio se houver erro de arquivo
                 }
 
                 var btn = document.getElementById('btnSubmit');
@@ -300,16 +339,20 @@
             });
         }
 
-        // --- 5. LIMPEZA DINÂMICA DE ERROS ---
+        // --- 7. LIMPEZA DINÂMICA DE ERROS ---
         var invalidFields = document.querySelectorAll('.is-invalid');
         invalidFields.forEach(function(field) {
             var clearError = function() {
                 if (field.classList.contains('is-invalid')) {
                     field.classList.remove('is-invalid');
-                    // Se for o campo de arquivo, limpa também a mensagem de texto
-                    if(field.id === 'arquivo' && errorDiv) {
+                    
+                    // Limpa a div de erro correta dependendo de qual campo foi corrigido
+                    if (field.id === 'arquivo' && errorDiv) {
                         errorDiv.textContent = '';
                         errorDiv.style.display = 'none';
+                    } else if (field.id === 'id_documento_requisicao' && docReqErrorDiv) {
+                        docReqErrorDiv.textContent = '';
+                        docReqErrorDiv.style.display = 'none';
                     }
                 }
 

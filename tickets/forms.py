@@ -177,14 +177,25 @@ class TicketForm(forms.ModelForm):
     def clean_documento_requisicao(self):
         """ Valida o documento obrigatório """
         doc = self.cleaned_data.get("documento_requisicao")
-        return _validar_anexo_comum(doc)
+        if doc:
+            # Pega a extensão do arquivo e converte para minúsculo
+            import os
+            ext = os.path.splitext(doc.name)[1].lower()
+            
+            if ext != '.docx':
+                raise ValidationError("Formato inválido. O Documento de Requisição deve ser um arquivo .docx.")
+                
+            # Se for .docx, passa pela validação comum para checar tamanho e MIME type (antivírus/segurança)
+            return _validar_anexo_comum(doc)
+            
+        return doc
     
 
     def clean_arquivo(self):
         """
         Valida a lista de arquivos.
         """
-        # CORREÇÃO 1: Usar 'arquivo' (singular) para bater com o nome do campo
+        # Usar 'arquivo' (singular) para bater com o nome do campo
         arquivos = self.files.getlist("arquivo")
         
         if not arquivos:
