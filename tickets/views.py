@@ -91,21 +91,37 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
         if form.is_valid():
             try:
                 with transaction.atomic():
-                    # 1. Salva o Ticket
+                    # 1. Prepara o Ticket
                     ticket = form.save(commit=False)
                     ticket.cliente = request.user
+                    
+                    # Captura o Documento de Requisição (Obrigatório)
+                    doc_requisicao = request.FILES.get("documento_requisicao")
+                    
+                    # Se o seu modelo Ticket possui um campo específico para o anexo principal (ex: ticket.anexo)
+                    if doc_requisicao:
+                        ticket.anexo = doc_requisicao
+
+                    # Salva o ticket no banco
                     ticket.save()
 
-                    # 2. Processa Anexos no Banco
+                    # Lista que vai consolidar TODOS os arquivos para o envio de e-mail
+                    todos_anexos = []
+                    
+                    if doc_requisicao:
+                        ticket.documento_requisicao = doc_requisicao
+
+                    # 2. Processa Anexos Opcionais no Banco (TicketAnexo)
                     anexos_upload = request.FILES.getlist("arquivo")
                     if anexos_upload:
                         for arquivo_temp in anexos_upload:
                             TicketAnexo.objects.create(ticket=ticket, arquivo=arquivo_temp)
+                            todos_anexos.append(arquivo_temp)
                 
                 # 3. Envio de E-mail (Fora da transação atômica do banco)
-                # Se o e-mail falhar, o ticket continua salvo (o que é bom, pois o suporte pode ver)
+                # Passamos a lista 'todos_anexos' consolidada para o Maximo
                 try:
-                    MaximoEmailService.enviar_ticket_maximo(ticket, request.user, anexos_upload)
+                    MaximoEmailService.enviar_ticket_maximo(ticket, request.user, todos_anexos)
                 except Exception as e:
                     logger.error(f"Erro no envio de e-mail (Ticket {ticket.id}): {e}")
                     # Opcional: messages.warning(request, "Ticket criado, mas houve erro no envio do e-mail.")

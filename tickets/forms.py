@@ -120,6 +120,17 @@ class TicketForm(forms.ModelForm):
     Formulário principal de abertura de chamados.
     """
 
+    documento_requisicao = forms.FileField(
+        required=True,
+        widget=forms.FileInput(attrs={
+            "class": "form-control"
+        }),
+        label="Documento de Requisição de Ticket",
+        error_messages={
+            'required': 'O anexo do Documento de Requisição é obrigatório.'
+        }
+    )
+
     # O nome aqui é 'arquivo' (singular), igual ao name no HTML
     arquivo = forms.FileField(
         required=False,
@@ -161,6 +172,13 @@ class TicketForm(forms.ModelForm):
                 self.fields["area"].queryset = Area.objects.none()
                 self.fields["area"].required = False
                 self.fields["area"].widget = forms.HiddenInput()
+
+
+    def clean_documento_requisicao(self):
+        """ Valida o documento obrigatório """
+        doc = self.cleaned_data.get("documento_requisicao")
+        return _validar_anexo_comum(doc)
+    
 
     def clean_arquivo(self):
         """

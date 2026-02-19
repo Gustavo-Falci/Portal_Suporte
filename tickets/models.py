@@ -140,8 +140,14 @@ class Ticket(models.Model):
     sumario = models.CharField(max_length=100, verbose_name="Resumo do Problema")
     descricao = models.TextField(verbose_name="Descrição Detalhada")
 
+    documento_requisicao = models.FileField(
+        upload_to=ticket_upload_path,
+        null=True, 
+        blank=True, 
+        verbose_name="Documento de Requisição"
+    )
+
     # Integração Maximo
-    # MELHORIA: db_index=True acelera drasticamente as buscas pelo ID do Maximo
     maximo_id = models.CharField(
         max_length=50,
         null=True,

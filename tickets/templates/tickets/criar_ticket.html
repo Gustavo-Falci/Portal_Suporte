@@ -1,10 +1,10 @@
 {% extends "tickets/base.html" %}
 
-{% block messages %}
-    {% endblock %}
+{% load static %} {% block messages %}
+{% endblock %}
 {% block content %}
 <div class="abrir-container">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
         <h2 class="h4 fw-bold"><i class="fa-solid fa-pen-to-square me-2 text-primary"></i>Novo Ticket</h2>
         <a href="{% url "tickets:pagina_inicial" %}" class="btn btn-outline-secondary btn-sm">Cancelar</a>
     </div>
@@ -119,7 +119,37 @@
                     {% endif %}
                 </div>
 
-                <div class="mb-4">
+                <div class="mb-1 p-3 bg-light border rounded border-start border-1 border-primary">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label for="id_documento_requisicao" class="form-label fw-bold mb-0 text-dark">
+                            Documento de Requisição de Ticket *
+                        </label>
+                        
+                        <a href="{% static 'tickets/docs/modelo_documento_requisicao.docx' %}" class="btn btn-sm btn-outline-primary" download>
+                            <i class="fa-solid fa-download me-1"></i> Baixar Modelo
+                        </a>
+                    </div>
+
+                    <input class="form-control {% if form.documento_requisicao.errors %}is-invalid{% endif %}" 
+                        type="file" 
+                        id="id_documento_requisicao" 
+                        name="documento_requisicao"
+                        accept=".pdf,.doc,.docx">
+
+                    {% if form.documento_requisicao.errors %}
+                        <div class="invalid-feedback text-start d-block">
+                            {% for error in form.documento_requisicao.errors %}
+                                <i class="fa-solid fa-circle-exclamation me-1"></i> {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    
+                    <div class="form-text text-muted small mt-2">
+                        Este documento é <strong>obrigatório</strong> para a abertura do chamado. Se não possuir, faça o download do modelo, preencha e anexe aqui.
+                    </div>
+                </div>
+
+                <div class="mb-2">
                     <label for="arquivo" class="form-label small text-muted ms-1">Anexar documentos de evidência (Opcional)</label>
                     
                     <input class="form-control {% if form.arquivo.errors %}is-invalid{% endif %}" 
@@ -143,7 +173,7 @@
                     </div>
                 </div>
 
-                <hr class="my-4">
+                <hr class="my-2">
 
                 <div class="d-flex justify-content-end">
                     <button type="submit" class="btn btn-primary btn-lg" id="btnSubmit">
