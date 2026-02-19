@@ -1,6 +1,7 @@
 import logging
 import json
 import requests
+import os
 from django.core.mail import EmailMessage
 from django.conf import settings
 from .models import Ticket, TicketInteracao, Cliente, Notificacao
@@ -75,19 +76,27 @@ class MaximoEmailService:
         if arquivos_upload:
             for arquivo in arquivos_upload:
                 try:
+                    # 1. Abre o arquivo salvo fisicamente em modo de leitura binária ('rb')
+                    arquivo.open('rb')
                     arquivo.seek(0)
                     
-                    nome = arquivo.name
+                    # 2. Pega apenas o nome do arquivo final, ignorando o caminho da pasta
+                    # (Ex: em vez de 'tickets/2026/arquivo.docx', fica só 'arquivo.docx')
+                    nome = os.path.basename(arquivo.name)
+                    
+                    # 3. Lê os bytes do arquivo
                     conteudo = arquivo.read()
                     
-                    content_type = getattr(
-                        arquivo, "content_type", "application/octet-stream"
-                    )
-                    
-                    email.attach(nome, conteudo, content_type)
+                    # 4. Anexa ao e-mail (O próprio Django infere o content_type pelo nome do arquivo)
+                    email.attach(nome, conteudo)
                     
                 except Exception as e:
                     logger.error(f"Erro ao anexar arquivo '{getattr(arquivo, 'name', '?')}' no service: {e}")
+                
+                finally:
+                    # 5. Segurança: Fecha o arquivo para liberar memória do servidor
+                    if hasattr(arquivo, 'closed') and not arquivo.closed:
+                        arquivo.close()
 
         try:
             email.send()

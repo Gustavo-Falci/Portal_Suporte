@@ -85,53 +85,49 @@ def meus_tickets(request: HttpRequest) -> HttpResponse:
 @login_required(login_url="/login/")
 def criar_ticket(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
-        # Passamos user=request.user para filtrar a Area no __init__ do form
         form = TicketForm(request.POST, request.FILES, user=request.user)
 
         if form.is_valid():
             try:
                 with transaction.atomic():
-                    # 1. Prepara o Ticket
+                    # 1. Prepara e salva o Ticket com o Documento de Requisição
                     ticket = form.save(commit=False)
                     ticket.cliente = request.user
                     
-                    # Captura o Documento de Requisição (Obrigatório)
                     doc_requisicao = request.FILES.get("documento_requisicao")
-                    
-                    # Se o seu modelo Ticket possui um campo específico para o anexo principal (ex: ticket.anexo)
-                    if doc_requisicao:
-                        ticket.anexo = doc_requisicao
-
-                    # Salva o ticket no banco
-                    ticket.save()
-
-                    # Lista que vai consolidar TODOS os arquivos para o envio de e-mail
-                    todos_anexos = []
-                    
                     if doc_requisicao:
                         ticket.documento_requisicao = doc_requisicao
 
-                    # 2. Processa Anexos Opcionais no Banco (TicketAnexo)
+                    ticket.save()
+
+                    # 2. Processa e salva Anexos Opcionais
                     anexos_upload = request.FILES.getlist("arquivo")
                     if anexos_upload:
                         for arquivo_temp in anexos_upload:
                             TicketAnexo.objects.create(ticket=ticket, arquivo=arquivo_temp)
-                            todos_anexos.append(arquivo_temp)
                 
-                # 3. Envio de E-mail (Fora da transação atômica do banco)
-                # Passamos a lista 'todos_anexos' consolidada para o Maximo
+                # --- SOLUÇÃO: Resgatamos os ficheiros seguros e guardados da base de dados ---
+                todos_anexos = []
+                
+                # A. Documento de Requisição (obrigatório)
+                if ticket.documento_requisicao:
+                    todos_anexos.append(ticket.documento_requisicao)
+
+                # B. Evidências adicionais
+                for anexo_obj in ticket.anexos.all():
+                    todos_anexos.append(anexo_obj.arquivo)
+
+                # 3. Envio de E-mail
                 try:
                     MaximoEmailService.enviar_ticket_maximo(ticket, request.user, todos_anexos)
                 except Exception as e:
                     logger.error(f"Erro no envio de e-mail (Ticket {ticket.id}): {e}")
-                    # Opcional: messages.warning(request, "Ticket criado, mas houve erro no envio do e-mail.")
 
                 return redirect("tickets:ticket_sucesso")
 
             except Exception as e:
-                # Se der erro ao salvar no banco (ticket ou anexos), nada é salvo
-                logger.error(f"Erro ao criar ticket no banco: {e}")
-                messages.error(request, "Ocorreu um erro ao salvar o ticket. Tente novamente.")
+                logger.error(f"Erro ao criar ticket na base de dados: {e}")
+                messages.error(request, "Ocorreu um erro ao guardar o ticket. Tente novamente.")
     else:
         form = TicketForm(user=request.user)
 
