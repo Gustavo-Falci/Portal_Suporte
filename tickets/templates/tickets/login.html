@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block messages %}
-    {% endblock %}
+{% endblock %}
 
 {% block title %}Login - Portal de Suporte{% endblock %}
 
@@ -125,42 +125,76 @@
                     <img src="{% static 'tickets/img/ITCONSOL.png' %}" alt="IT Consol" style="max-height: 50px;">
                 </div>
 
-                <h3 class="fw-bold mb-1 text-dark">Bem-vindo(a)</h3>
-                <p class="text-muted mb-4 small">Insira suas credenciais para acessar o portal.</p>
+                {% if not is_troca_senha %}
+                    <h3 class="fw-bold mb-1 text-dark">Bem-vindo(a)</h3>
+                    <p class="text-muted mb-4 small">Insira suas credenciais para acessar o portal.</p>
 
-                {% if form.errors %}
-                <div id="generalErrorAlert" class="alert alert-danger border-0 rounded-3 small py-2 d-flex align-items-center">
-                    <i class="fa-solid fa-circle-exclamation me-2"></i>
-                    E-mail ou senha inválidos.
-                </div>
+                    {% if form.errors %}
+                    <div id="generalErrorAlert" class="alert alert-danger border-0 rounded-3 small py-2 d-flex align-items-center">
+                        <i class="fa-solid fa-circle-exclamation me-2"></i>
+                        E-mail ou senha inválidos.
+                    </div>
+                    {% endif %}
+
+                    <form method="post" id="loginForm">
+                        {% csrf_token %}
+                        
+                        <div class="form-floating mb-3">
+                            <input type="email" name="username" class="form-control rounded-3 {% if form.errors %}is-invalid{% endif %}" id="floatingEmail" placeholder="nome@exemplo.com">
+                            <label for="floatingEmail" class="text-muted"><i class="fa-regular fa-envelope me-2"></i>E-mail corporativo</label>
+                        </div>
+
+                        <div class="form-floating mb-4">
+                            <input type="password" name="password" class="form-control rounded-3 {% if form.errors %}is-invalid{% endif %}" id="floatingPassword" placeholder="Senha">
+                            <label for="floatingPassword" class="text-muted"><i class="fa-solid fa-lock me-2"></i>Senha</label>
+                        </div>
+
+                        <div class="form-check form-switch custom-switch mb-4 d-flex align-items-center gap-2 ps-0">
+                            <input class="form-check-input m-0 shadow-none" type="checkbox" role="switch" name="remember_me" value="true" id="rememberMe">
+                            <label class="form-check-label small text-muted fw-medium" for="rememberMe">
+                                Manter-me conectado
+                            </label>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 rounded-3 py-2 fw-bold d-flex justify-content-center align-items-center" id="btnSubmit" style="background-color: var(--ibm-blue-60, #0f62fe); border: none;">
+                            <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
+                            <span class="btn-text">Entrar</span>
+                            <i class="fa-solid fa-arrow-right-to-bracket ms-2"></i>
+                        </button>
+                    </form>
+
+                {% else %}
+                    <h3 class="fw-bold mb-1 text-primary">Primeiro Acesso</h3>
+                    <p class="text-muted mb-4 small">Por segurança, defina uma nova senha.</p>
+
+                    <form method="post" id="passwordForm">
+                        {% csrf_token %}
+                        
+                        {% for field in form_troca_senha %}
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-muted"><i class="fa-solid fa-key me-2"></i>{{ field.label }}</label>
+                                <input type="{{ field.field.widget.input_type }}" 
+                                       name="{{ field.name }}" 
+                                       class="form-control rounded-3 {% if field.errors %}is-invalid{% endif %}"
+                                       placeholder="Digite sua senha">
+                                
+                                {% if field.errors %}
+                                    <div class="invalid-feedback">{{ field.errors.0 }}</div>
+                                {% endif %}
+                                
+                                {% if field.help_text %}
+                                    <div class="form-text small opacity-75" style="font-size: 0.75rem;">{{ field.help_text|safe }}</div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+
+                        <button type="submit" class="btn btn-success w-100 rounded-3 py-2 fw-bold d-flex justify-content-center align-items-center mt-4" id="btnSavePassword">
+                            <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
+                            <span class="save-text">Definir Senha e Entrar</span>
+                            <i class="fa-solid fa-check ms-2"></i>
+                        </button>
+                    </form>
                 {% endif %}
-
-                <form method="post" id="loginForm">
-                    {% csrf_token %}
-                    
-                    <div class="form-floating mb-3">
-                        <input type="email" name="username" class="form-control rounded-3 {% if form.errors %}is-invalid{% endif %}" id="floatingEmail" placeholder="nome@exemplo.com">
-                        <label for="floatingEmail" class="text-muted"><i class="fa-regular fa-envelope me-2"></i>E-mail corporativo</label>
-                    </div>
-
-                    <div class="form-floating mb-4">
-                        <input type="password" name="password" class="form-control rounded-3 {% if form.errors %}is-invalid{% endif %}" id="floatingPassword" placeholder="Senha">
-                        <label for="floatingPassword" class="text-muted"><i class="fa-solid fa-lock me-2"></i>Senha</label>
-                    </div>
-
-                    <div class="form-check form-switch custom-switch mb-4 d-flex align-items-center gap-2 ps-0">
-                        <input class="form-check-input m-0 shadow-none" type="checkbox" role="switch" name="remember_me" value="true" id="rememberMe">
-                        <label class="form-check-label small text-muted fw-medium" for="rememberMe">
-                            Manter-me conectado
-                        </label>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary w-100 rounded-3 py-2 fw-bold d-flex justify-content-center align-items-center" id="btnSubmit" style="background-color: var(--ibm-blue-60, #0f62fe); border: none;">
-                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
-                        <span class="btn-text">Entrar</span>
-                        <i class="fa-solid fa-arrow-right-to-bracket ms-2"></i>
-                    </button>
-                </form>
 
             </div>
         </div>
@@ -181,12 +215,12 @@
                 btn.classList.add('disabled');
                 spinner.classList.remove('d-none');
                 if(icon) icon.classList.add('d-none');
-                text.innerText = textLoading;
+                if(text) text.innerText = textLoading;
             });
         };
 
         setupLoader('loginForm', 'btnSubmit', 'Autenticando...');
-        setupLoader('passwordForm', 'btnSavePassword', 'Enviando...');
+        setupLoader('passwordForm', 'btnSavePassword', 'Salvando...');
 
         document.querySelectorAll('.is-invalid').forEach(field => {
             field.addEventListener('input', function() {
