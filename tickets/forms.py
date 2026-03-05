@@ -1,14 +1,20 @@
-from django import forms
-from django.contrib.auth.forms import AuthenticationForm
-from django.core.exceptions import ValidationError
-from .models import Ambiente, Area, Ticket, TicketInteracao
 import os
 import mimetypes
+from typing import Any, Dict
+
+from django import forms
+from django.contrib.auth.forms import AuthenticationForm, SetPasswordForm
+from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
+
+from .models import Ambiente, Area, Ticket, TicketInteracao
+
+# Obtém o modelo de cliente atual
+Cliente = get_user_model()
 
 # --- UTILITÁRIO DE VALIDAÇÃO (DRY & Segurança) ---
 
-
-def _validar_anexo_comum(arquivo):
+def _validar_anexo_comum(arquivo: Any) -> Any:
     """
     Validação centralizada para uploads (Ticket e Chat).
     Verifica tamanho, extensão e MIME type.
@@ -26,21 +32,8 @@ def _validar_anexo_comum(arquivo):
     # 2. Validar extensão
     ext = os.path.splitext(arquivo.name)[1].lower()
     extensoes_validas = [
-        ".pdf",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".txt",
-        ".xlsx",
-        ".xls",
-        ".docx",
-        ".doc",
-        ".csv",
-        ".zip",
-        ".rar",
-        ".xml",
-        ".pptx",
-        ".ppt",
+        ".pdf", ".png", ".jpg", ".jpeg", ".txt", ".xlsx", ".xls",
+        ".docx", ".doc", ".csv", ".zip", ".rar", ".xml", ".pptx", ".ppt",
     ]
 
     if ext not in extensoes_validas:
@@ -49,10 +42,8 @@ def _validar_anexo_comum(arquivo):
         )
 
     # 3. Validação de MIME type (Segurança reforçada)
-    # Adivinha o tipo baseado no nome do ficheiro (não é perfeito, mas ajuda)
     content_type_guess, _ = mimetypes.guess_type(arquivo.name)
 
-    # Lista de tipos seguros
     allowed_mimes = [
         "application/pdf",
         "image/png",
@@ -75,18 +66,16 @@ def _validar_anexo_comum(arquivo):
             raise ValidationError(
                 f"Formato de arquivo inválido ({content_type_guess})."
             )
-            # pass
+            
     return arquivo
 
 
-# 1. FORMULÁRIO DE LOGIN
-
+# 1. FORMULÁRIOS DE AUTENTICAÇÃO E SENHA
 
 class EmailAuthenticationForm(AuthenticationForm):
     """
     Formulário de autenticação customizado para usar E-mail como login.
     """
-
     username = forms.CharField(
         label="E-mail",
         max_length=254,
@@ -94,6 +83,8 @@ class EmailAuthenticationForm(AuthenticationForm):
             attrs={
                 "autofocus": True,
                 "class": "form-control",
+                "id": "floatingEmail",
+                "placeholder": "nome@exemplo.com"
             }
         ),
     )
@@ -102,6 +93,8 @@ class EmailAuthenticationForm(AuthenticationForm):
         widget=forms.PasswordInput(
             attrs={
                 "class": "form-control",
+                "id": "floatingPassword",
+                "placeholder": "Senha"
             }
         ),
     )
@@ -112,31 +105,38 @@ class EmailAuthenticationForm(AuthenticationForm):
     }
 
 
-# 2. FORMULÁRIO DE ABERTURA DE TICKET
+class NovaSenhaForm(SetPasswordForm):
+    """
+    Formulário de Troca de Senha Obrigatória no Primeiro Acesso.
+    Herda as validações nativas do Django (AUTH_PASSWORD_VALIDATORS).
+    """
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # Remove os textos de ajuda nativos gigantes do Django 
+        # para usarmos a nossa validação visual do frontend limpa.
+        for field in self.fields.values():
+            field.help_text = ''
+            field.widget.attrs.update({'class': 'form-control'})
 
+
+# 2. FORMULÁRIO DE ABERTURA DE TICKET
 
 class TicketForm(forms.ModelForm):
     """
     Formulário principal de abertura de chamados.
     """
-
     documento_requisicao = forms.FileField(
         required=True,
-        widget=forms.FileInput(attrs={
-            "class": "form-control"
-        }),
+        widget=forms.FileInput(attrs={"class": "form-control"}),
         label="Documento de Requisição de Ticket",
         error_messages={
             'required': 'O anexo do Documento de Requisição é obrigatório.'
         }
     )
 
-    # O nome aqui é 'arquivo' (singular), igual ao name no HTML
     arquivo = forms.FileField(
         required=False,
-        widget=forms.FileInput(attrs={
-            "class": "form-control"
-        }),
+        widget=forms.FileInput(attrs={"class": "form-control"}),
         label="Anexos de Evidência",
     )
 
@@ -152,7 +152,7 @@ class TicketForm(forms.ModelForm):
             "area": forms.Select(attrs={"class": "form-select"}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
 
@@ -162,7 +162,6 @@ class TicketForm(forms.ModelForm):
             location_str = str(user.location).upper() if getattr(user, "location", None) else ""
             empresas_com_area = ["PAMPA", "ABL"]
             
-            # Verifica se o usuário pertence a uma empresa que exige Área
             tem_acesso_area = any(empresa in location_str for empresa in empresas_com_area)
 
             if tem_acesso_area:
@@ -173,62 +172,34 @@ class TicketForm(forms.ModelForm):
                 self.fields["area"].required = False
                 self.fields["area"].widget = forms.HiddenInput()
 
-
-    def clean_documento_requisicao(self):
-        """ Valida o documento obrigatório """
+    def clean_documento_requisicao(self) -> Any:
         doc = self.cleaned_data.get("documento_requisicao")
         if doc:
-            # Pega a extensão do arquivo e converte para minúsculo
-            import os
             ext = os.path.splitext(doc.name)[1].lower()
-            
             if ext != '.docx':
                 raise ValidationError("Formato inválido. O Documento de Requisição deve ser um arquivo .docx.")
-                
-            # Se for .docx, passa pela validação comum para checar tamanho e MIME type (antivírus/segurança)
             return _validar_anexo_comum(doc)
-            
         return doc
     
-
-    def clean_arquivo(self):
-        """
-        Valida a lista de arquivos.
-        """
-        # Usar 'arquivo' (singular) para bater com o nome do campo
+    def clean_arquivo(self) -> Any:
         arquivos = self.files.getlist("arquivo")
-        
         if not arquivos:
             return None
 
         for f in arquivos:
-            # Valida cada arquivo individualmente usando sua função utilitária
             _validar_anexo_comum(f)
-        
-        # Retorna a lista validada (embora a view vá usar request.FILES.getlist)
         return arquivos
 
-    def save(self, commit=True):
-        """
-        Sobrescrevemos o save para garantir que não tente salvar 'arquivo' no Ticket.
-        O salvamento dos anexos é feito na View criar_ticket.
-        """
+    def save(self, commit: bool = True) -> Any:
         ticket = super().save(commit=False)
-        
-        # CORREÇÃO 2: Removemos a lógica de ticket.anexo = ...
-        # O formulário agora cuida apenas dos dados textuais do Ticket.
-        
         if commit:
             ticket.save()
-            
         return ticket
 
 
 # 3. FORMULÁRIO DE INTERAÇÃO (RESPOSTAS)
 
-
 class TicketInteracaoForm(forms.ModelForm):
-    # ... (Mantenha o resto igual)
     class Meta:
         model = TicketInteracao
         fields = ["mensagem", "anexo"]
@@ -237,5 +208,5 @@ class TicketInteracaoForm(forms.ModelForm):
             "anexo": forms.FileInput(attrs={"class": "form-control"}),
         }
 
-    def clean_anexo(self):
+    def clean_anexo(self) -> Any:
         return _validar_anexo_comum(self.cleaned_data.get("anexo"))

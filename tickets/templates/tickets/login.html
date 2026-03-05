@@ -9,7 +9,6 @@
 {% block content %}
 
 <style>
-    /* Neutraliza o margin-top padrão do base_no_nav.html para centralizar perfeitamente */
     body > .container {
         margin-top: 0 !important;
         display: flex;
@@ -18,13 +17,9 @@
         min-height: 100vh;
     }
 
-    /* CONFIGURAÇÃO DA IMAGEM DE FUNDO */
     .hero-background {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh; 
+        top: 0; left: 0; width: 100vw; height: 100vh; 
         background-image: url('{% static "tickets/img/fundo_login.jpg" %}');
         background-size: 100% 100%; 
         background-position: center; 
@@ -34,36 +29,27 @@
 
     .hero-background::before {
         content: "";
-        position: absolute;
-        top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(15, 36, 62, 0.45); /* Overlay escuro baseado no azul IBM */
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(15, 36, 62, 0.45);
         border-bottom: 4px solid var(--ibm-blue-60, #0f62fe);
     }
 
-    /* ESTILO DO NOVO SPLIT CARD */
     .login-split-card {
         background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
         border: 1px solid rgba(255, 255, 255, 0.2);
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         overflow: hidden;
     }
 
-    /* LADO DA MARCA (ESQUERDO) */
     .brand-side {
         background: linear-gradient(135deg, var(--ibm-blue-60, #0f62fe) 0%, #051b3b 100%);
-        color: white;
-        position: relative;
+        color: white; position: relative;
     }
     
     .brand-side::after {
-        content: "";
-        position: absolute;
-        bottom: -50px; left: -50px;
-        width: 200px; height: 200px;
-        background: rgba(255,255,255,0.05);
-        border-radius: 50%;
+        content: ""; position: absolute; bottom: -50px; left: -50px;
+        width: 200px; height: 200px; background: rgba(255,255,255,0.05); border-radius: 50%;
     }
 
     .form-control:focus {
@@ -72,15 +58,13 @@
     }
 
     .custom-switch .form-check-input {
-        width: 2.5em;
-        height: 1.25em;
-        cursor: pointer;
+        width: 2.5em; height: 1.25em; cursor: pointer;
         border-color: rgba(0, 0, 0, 0.2);
         transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
     }
     
     .custom-switch .form-check-input:focus {
-        box-shadow: 0 0 0 0.25rem rgba(15, 98, 254, 0.25); /* Glow azul */
+        box-shadow: 0 0 0 0.25rem rgba(15, 98, 254, 0.25);
         border-color: var(--ibm-blue-60, #0f62fe);
     }
     
@@ -88,11 +72,29 @@
         background-color: var(--ibm-blue-60, #0f62fe);
         border-color: var(--ibm-blue-60, #0f62fe);
     }
-    
-    .custom-switch .form-check-label {
+
+    /* ESTILO DO ÍCONE FLUTUANTE INVISÍVEL */
+    .toggle-password {
         cursor: pointer;
-        user-select: none; /* Impede o usuário de selecionar o texto sem querer ao clicar */
-        padding-top: 2px;
+        z-index: 100 !important; /* Sempre acima do input */
+        box-shadow: none !important; /* Remove sombra do botão nativo do bootstrap */
+    }
+    
+    .toggle-password i {
+        color: #6c757d !important; /* Cinza médio discreto */
+        transition: color 0.2s ease-in-out;
+    }
+    
+    .toggle-password:hover i {
+        color: var(--ibm-blue-60, #0f62fe) !important; /* Fica azul ao passar o mouse */
+    }
+
+    /* Remove a exclamação de erro nativa do Bootstrap nos campos de senha para não sobrepor o olhinho */
+    .form-control.is-invalid ~ .toggle-password {
+        right: 0 !important; /* Garante que o olhinho não sai do lugar */
+    }
+    .position-relative > .form-control.is-invalid {
+        background-image: none !important; 
     }
 </style>
 
@@ -107,14 +109,12 @@
                     <img src="{% static 'tickets/img/ITCONSOL.png' %}" alt="IT Consol" class="mb-4" style="max-height: 50px; filter: brightness(0) invert(1);">
                     <h2 class="fw-bold mb-3 font-monospace">Portal de Suporte</h2>
                     <p class="opacity-75" style="font-size: 0.95rem;">
-                        Gestão centralizada de tickets. Acompanhe suas solicitações em tempo real.
+                        Gestão centralizada de tickets. Acompanhe as suas solicitações em tempo real.
                     </p>
                 </div>
-                
                 <div class="mt-auto">
                     <div class="d-flex align-items-center opacity-75 small">
-                        <i class="fa-solid fa-shield-halved me-2"></i>
-                        Acesso restrito e seguro
+                        <i class="fa-solid fa-shield-halved me-2"></i>Acesso restrito e seguro
                     </div>
                 </div>
             </div>
@@ -127,12 +127,11 @@
 
                 {% if not is_troca_senha %}
                     <h3 class="fw-bold mb-1 text-dark">Bem-vindo(a)</h3>
-                    <p class="text-muted mb-4 small">Insira suas credenciais para acessar o portal.</p>
+                    <p class="text-muted mb-4 small">Insira as suas credenciais para acessar o portal.</p>
 
                     {% if form.errors %}
                     <div id="generalErrorAlert" class="alert alert-danger border-0 rounded-3 small py-2 d-flex align-items-center">
-                        <i class="fa-solid fa-circle-exclamation me-2"></i>
-                        E-mail ou senha inválidos.
+                        <i class="fa-solid fa-circle-exclamation me-2"></i>E-mail ou senha inválidos.
                     </div>
                     {% endif %}
 
@@ -144,16 +143,18 @@
                             <label for="floatingEmail" class="text-muted"><i class="fa-regular fa-envelope me-2"></i>E-mail corporativo</label>
                         </div>
 
-                        <div class="form-floating mb-4">
-                            <input type="password" name="password" class="form-control rounded-3 {% if form.errors %}is-invalid{% endif %}" id="floatingPassword" placeholder="Senha">
+                        <div class="form-floating mb-4 position-relative">
+                            <input type="password" name="password" class="form-control rounded-3 {% if form.errors %}is-invalid{% endif %}" id="floatingPassword" placeholder="Senha" style="padding-right: 3rem;">
                             <label for="floatingPassword" class="text-muted"><i class="fa-solid fa-lock me-2"></i>Senha</label>
+                            
+                            <button type="button" class="btn bg-transparent border-0 position-absolute end-0 top-0 h-100 px-3 d-flex align-items-center justify-content-center toggle-password" data-target="floatingPassword" tabindex="-1">
+                                <i class="fa-regular fa-eye fs-5"></i>
+                            </button>
                         </div>
 
                         <div class="form-check form-switch custom-switch mb-4 d-flex align-items-center gap-2 ps-0">
                             <input class="form-check-input m-0 shadow-none" type="checkbox" role="switch" name="remember_me" value="true" id="rememberMe">
-                            <label class="form-check-label small text-muted fw-medium" for="rememberMe">
-                                Manter-me conectado
-                            </label>
+                            <label class="form-check-label small text-muted fw-medium" for="rememberMe">Manter-me conectado</label>
                         </div>
 
                         <button type="submit" class="btn btn-primary w-100 rounded-3 py-2 fw-bold d-flex justify-content-center align-items-center" id="btnSubmit" style="background-color: var(--ibm-blue-60, #0f62fe); border: none;">
@@ -166,24 +167,37 @@
                 {% else %}
                     <h3 class="fw-bold mb-1 text-primary">Primeiro Acesso</h3>
                     <p class="text-muted mb-4 small">Por segurança, defina uma nova senha.</p>
-
                     <form method="post" id="passwordForm">
                         {% csrf_token %}
-                        
                         {% for field in form_troca_senha %}
                             <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted"><i class="fa-solid fa-key me-2"></i>{{ field.label }}</label>
-                                <input type="{{ field.field.widget.input_type }}" 
-                                       name="{{ field.name }}" 
-                                       class="form-control rounded-3 {% if field.errors %}is-invalid{% endif %}"
-                                       placeholder="Digite sua senha">
+                                <label for="{{ field.id_for_label|default:field.auto_id }}" class="form-label small fw-bold text-muted mb-1">
+                                    <i class="fa-solid fa-key me-2"></i>{{ field.label }}
+                                </label>
                                 
+                                <div class="position-relative">
+                                    <input type="{{ field.field.widget.input_type }}" name="{{ field.name }}" id="{{ field.id_for_label|default:field.auto_id }}" class="form-control rounded-3 check-strength {% if field.errors %}is-invalid{% endif %}" placeholder="Digite sua senha" style="padding-right: 3rem;">
+                                    
+                                    {% if field.field.widget.input_type == 'password' %}
+                                        <button type="button" class="btn bg-transparent border-0 position-absolute end-0 top-0 h-100 px-3 d-flex align-items-center justify-content-center toggle-password" data-target="{{ field.id_for_label|default:field.auto_id }}" tabindex="-1">
+                                            <i class="fa-regular fa-eye fs-5"></i>
+                                        </button>
+                                    {% endif %}
+                                </div>
+
+                                {% if field.field.widget.input_type == 'password' %}
+                                    <div class="progress mt-2 d-none password-strength-container" style="height: 4px;">
+                                        <div class="progress-bar password-strength-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                    <small class="password-strength-text text-muted d-none" style="font-size: 0.7rem;"></small>
+                                {% endif %}
+
                                 {% if field.errors %}
-                                    <div class="invalid-feedback">{{ field.errors.0 }}</div>
+                                    <div class="invalid-feedback d-block mt-1">{{ field.errors.0 }}</div>
                                 {% endif %}
                                 
                                 {% if field.help_text %}
-                                    <div class="form-text small opacity-75" style="font-size: 0.75rem;">{{ field.help_text|safe }}</div>
+                                    <div class="form-text small opacity-75 mt-1" style="font-size: 0.75rem;">{{ field.help_text|safe }}</div>
                                 {% endif %}
                             </div>
                         {% endfor %}
@@ -203,6 +217,8 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        
+        // 1. LOADER DOS BOTÕES
         const setupLoader = (formId, btnId, textLoading) => {
             const form = document.getElementById(formId);
             if (!form) return;
@@ -220,8 +236,9 @@
         };
 
         setupLoader('loginForm', 'btnSubmit', 'Autenticando...');
-        setupLoader('passwordForm', 'btnSavePassword', 'Salvando...');
+        setupLoader('passwordForm', 'btnSavePassword', 'A Guardar...');
 
+        // 2. LIMPAR ERROS AO DIGITAR
         document.querySelectorAll('.is-invalid').forEach(field => {
             field.addEventListener('input', function() {
                 this.classList.remove('is-invalid');
@@ -231,6 +248,80 @@
                 }
             });
         });
+
+        // 3. MOSTRAR/OCULTAR SENHA (ÍCONE INTEGRADO)
+        document.querySelectorAll('.toggle-password').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('data-target');
+                const input = document.getElementById(targetId);
+                const icon = this.querySelector('i');
+
+                if (input) {
+                    if (input.type === 'password') {
+                        input.type = 'text';
+                        icon.classList.remove('fa-eye');
+                        icon.classList.add('fa-eye-slash');
+                    } else {
+                        input.type = 'password';
+                        icon.classList.remove('fa-eye-slash');
+                        icon.classList.add('fa-eye');
+                    }
+                    input.focus(); 
+                }
+            });
+        });
+
+        // 4. AVALIAÇÃO DE FORÇA DA SENHA (NOVO ACESSO)
+        document.querySelectorAll('.check-strength').forEach(input => {
+            if (input.type === 'password') {
+                input.addEventListener('input', function() {
+                    const container = this.closest('.mb-3').querySelector('.password-strength-container');
+                    const bar = this.closest('.mb-3').querySelector('.password-strength-bar');
+                    const textMsg = this.closest('.mb-3').querySelector('.password-strength-text');
+                    
+                    if (!container || !bar || !textMsg) return;
+                    
+                    const val = this.value;
+                    
+                    if (val.length === 0) {
+                        container.classList.add('d-none');
+                        textMsg.classList.add('d-none');
+                        return;
+                    }
+                    
+                    container.classList.remove('d-none');
+                    textMsg.classList.remove('d-none');
+                    
+                    let strength = 0;
+                    if (val.length >= 8) strength += 25;
+                    if (val.match(/[A-Z]/)) strength += 25; 
+                    if (val.match(/[0-9]/)) strength += 25; 
+                    if (val.match(/[^a-zA-Z0-9]/)) strength += 25;
+
+                    bar.style.width = strength + '%';
+                    
+                    if (strength <= 25) {
+                        bar.className = 'progress-bar password-strength-bar bg-danger';
+                        textMsg.innerText = 'Senha fraca (Tente usar letras, números e símbolos)';
+                        textMsg.className = 'password-strength-text text-danger d-block mt-1';
+                    } else if (strength <= 50) {
+                        bar.className = 'progress-bar password-strength-bar bg-warning';
+                        textMsg.innerText = 'Senha razoável';
+                        textMsg.className = 'password-strength-text text-warning d-block mt-1';
+                    } else if (strength <= 75) {
+                        bar.className = 'progress-bar password-strength-bar bg-info';
+                        textMsg.innerText = 'Senha boa';
+                        textMsg.className = 'password-strength-text text-info d-block mt-1';
+                    } else {
+                        bar.className = 'progress-bar password-strength-bar bg-success';
+                        textMsg.innerText = 'Senha forte';
+                        textMsg.className = 'password-strength-text text-success d-block mt-1';
+                    }
+                });
+            }
+        });
+
     });
 </script>
 {% endblock %}
