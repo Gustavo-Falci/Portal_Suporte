@@ -125,12 +125,12 @@ class Command(BaseCommand):
         for log in logs:
             # --- 1. FILTRO DE TIPO ---
             # Filtra apenas logs do tipo CLIENTNOTE
-            tipo = log.get("logtype", "")
-            if tipo != "CLIENTNOTE":
-                continue
-            
+            tipo = log.get("logtype", "").upper()
             autor = log.get("createby", "SUPORTE").upper()
-            if autor in ["MXINTADM"]: # Adicione outros usuários de integração se houver
+
+            # --- 2. APLICAÇÃO DA REGRA DE NEGÓCIO ---
+            # Ignora se NÃO for CLIENTNOTE OU se for o robô de integração
+            if tipo != "CLIENTNOTE" or autor == "MXINTADM":
                 continue
 
             # Pega descrição (Longa tem prioridade)
