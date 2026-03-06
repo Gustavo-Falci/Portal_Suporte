@@ -59,7 +59,7 @@ class Command(BaseCommand):
                 params = {
                     "oslc.where": f'ticketid="{ticket.maximo_id}"',
                     # ALTERADO: Adicionado 'logtype' na solicitação
-                    "oslc.select": "ticketid,worklog{recordkey,createby,logtype,createdate,description,description_longdescription}",
+                    "oslc.select": "ticketid,worklog{recordkey,modifyby,logtype,createdate,description,description_longdescription}",
                     "lean": 1
                 }
                 
@@ -126,7 +126,7 @@ class Command(BaseCommand):
             # --- 1. FILTRO DE TIPO ---
             # Filtra apenas logs do tipo CLIENTNOTE
             tipo = log.get("logtype", "").upper()
-            autor = log.get("createby", "SUPORTE").upper()
+            autor = log.get("modifyby", "SUPORTE").upper()
 
             # --- 2. APLICAÇÃO DA REGRA DE NEGÓCIO ---
             # Ignora se NÃO for CLIENTNOTE OU se for o robô de integração
