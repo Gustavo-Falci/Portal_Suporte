@@ -230,7 +230,10 @@ class NotificationService:
             
             # Link para o ticket
             link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
-            base_url = getattr(settings, "SITE_URL", "") # Define SITE_URL no settings.py para links absolutos
+
+            # Pegamos a URL do settings e removemos qualquer barra no final (rstrip) para evitar //
+            base_url = getattr(settings, "SITE_URL", "http://localhost:8000").rstrip("/") 
+
             full_link = f"{base_url}{link_relativo}"
 
             notificacoes_db = []
@@ -289,7 +292,7 @@ class MaximoSenderService:
         Envia uma nova mensagem do chat para o Worklog do Maximo.
         Gatilho: Botão 'Enviar' no detalhe do ticket.
         """
-        
+
         if not ticket.maximo_id:
             logger.warning(f"Tentativa de envio para Maximo falhou: Ticket {ticket.id} não possui maximo_id.")
             return False
