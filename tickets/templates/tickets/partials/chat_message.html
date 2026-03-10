@@ -1,48 +1,49 @@
 <div class="chat-row {% if interacao.autor == request.user %}chat-me{% else %}chat-other{% endif %}">
     
-    <div class="chat-avatar shadow-sm {% if interacao.is_support %}avatar-support{% endif %}" title="{{ interacao.autor.get_full_name }}">
-        {% if interacao.is_support %}
-            <i class="bi bi-headset" style="font-size: 1.2rem;"></i>
-        {% else %}
-            <i class="bi bi-person-fill"></i>
-        {% endif %}
-    </div>
-
-    <div class="card chat-bubble">
-        <div class="card-header rounded-0 py-2 d-flex justify-content-between align-items-center ">
-            <small class="fw-bold text-uppercase" style="font-size: 0.75rem;">
-                {% if interacao.is_support %}
-                    🛠️ {{ interacao.autor.get_full_name|default:interacao.autor.username }}
-                {% else %}
-                    👤 {{ interacao.autor.get_full_name|default:interacao.autor.username }}
-                {% endif %}
-            </small>
-            <small class="font-monospace ms-3" style="font-size: 0.7rem; opacity: 0.9;">
-                {{ interacao.data_criacao|date:"d/m/Y H:i" }}
-            </small>
-        </div>
-
-        <div class="card-body pt-1 pb-2 px-3">
-            <p class="mb-1 text-dark" style="white-space: pre-wrap; font-size: 0.9rem; line-height: 1.4;">{{ interacao.mensagem }}</p>
+    <div class="chat-row {% if interacao.autor == request.user %}chat-me{% else %}chat-other{% endif %}">
+    
+        <div class="chat-avatar shadow-sm 
+            {% if interacao.is_support %}avatar-support
+            {% elif interacao.autor.is_consultor %}avatar-consultor{% endif %}" 
+            title="{{ interacao.autor.get_full_name|default:interacao.autor.username }}">
             
-            {% if interacao.anexo %}
-                <div class="mt-2 pt-2 border-top">
-                    <small>
-                        <a href="{% url 'tickets:download_anexo' interacao.id %}" 
-                           class="text-decoration-none d-flex align-items-center" 
-                           target="_blank"
-                           title="{{ interacao.filename }}"> 
-                            
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-paperclip me-1" viewBox="0 0 16 16">
-                                <path d="M4.5 3a2.5 2.5 0 0 1 5 0v9a1.5 1.5 0 0 1-3 0V5a.5.5 0 0 1 1 0v7a.5.5 0 0 0 1 0V3a1.5 1.5 0 1 0-3 0v9a2.5 2.5 0 0 0 5 0V5a.5.5 0 0 1 1 0v7a3.5 3.5 0 1 1-7 0V3z"/>
-                            </svg>
-                            
-                            Anexo: {{ interacao.filename_short|default:interacao.anexo.name }}
-                        </a>
-                    </small>
-                </div>
+            {% if interacao.is_support %}
+                <i class="bi bi-headset" style="font-size: 1.2rem;"></i>
+            {% elif interacao.autor.is_consultor %}
+                <i class="bi bi-person-gear" style="font-size: 1.2rem;"></i>
+                
+                {% else %}
+                <i class="bi bi-person-fill"></i>
             {% endif %}
         </div>
-    </div>
 
+        <div class="card chat-bubble">
+            <div class="card-header rounded-0 py-2 d-flex justify-content-between align-items-center">
+                <small class="fw-bold text-uppercase d-flex align-items-center" style="font-size: 0.75rem;">
+                    
+                    {% if interacao.is_support %}
+                        <i class="fa-solid fa-wrench me-2 text-muted"></i> 
+                        {{ interacao.autor.get_full_name|default:interacao.autor.username }}
+                    {% elif interacao.autor.is_consultor %}
+                        {{ interacao.autor.get_full_name|default:interacao.autor.username }}
+                        <span class="badge bg-secondary ms-2 rounded-1 fw-normal" style="font-size: 0.6rem; letter-spacing: 0.5px;">CONSULTOR</span>
+                    {% else %}
+                        <i class="fa-solid fa-user me-2 text-muted"></i> 
+                        {{ interacao.autor.get_full_name|default:interacao.autor.username }}
+                    {% endif %}
+                    
+                </small>
+                <small class="font-monospace ms-3" style="font-size: 0.7rem; opacity: 0.9;">
+                    {{ interacao.data_criacao|date:"d/m/Y H:i" }}
+                </small>
+            </div>
+
+            <div class="card-body pt-1 pb-2 px-3">
+                <p class="mb-1 text-dark" style="white-space: pre-wrap; font-size: 0.9rem; line-height: 1.4;">{{ interacao.mensagem }}</p>
+                
+                {% if interacao.anexo %}
+                    {% endif %}
+            </div>
+        </div>
+    </div>
 </div>

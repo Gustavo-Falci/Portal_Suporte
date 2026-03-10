@@ -243,6 +243,12 @@ body {
     background-color: #0043ce !important; /* Azul escuro IBM */
 }
 
+/* Destaque para Consultores no avatar */
+.avatar-consultor {
+    background-color: #6f42c1 !important; /* Cor roxa do Bootstrap, ou adapte para a paleta da IBM */
+    color: #ffffff;
+}
+
 /* Utilitário de Texto */
 .text-uppercase {
     text-transform: uppercase !important;

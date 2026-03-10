@@ -290,7 +290,7 @@ class TicketInteracao(models.Model):
 
     mensagem = models.TextField(verbose_name="Mensagem")
 
-    # MELHORIA: upload_to organizado
+    # upload_to organizado
     anexo = models.FileField(
         upload_to=interacao_upload_path,
         null=True,
@@ -353,7 +353,7 @@ class Notificacao(models.Model):
     destinatario = models.ForeignKey(
         Cliente, on_delete=models.CASCADE, related_name="notificacoes"
     )
-    
+
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, null=True, blank=True)
 
     titulo = models.CharField(max_length=50, default="Nova Notificação")
