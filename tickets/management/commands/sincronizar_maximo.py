@@ -39,13 +39,11 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("ERRO: MAXIMO_API_URL ou MAXIMO_API_KEY não configurados no settings."))
             return
         
-        # Parâmetros da API (TICKETID, DESCRIPTION, STATUS, OWNER)
+        # Parâmetros da API
         params = {
             "_dropnulls": 0,
             "lean": 1,
-            "oslc.select": "TICKETID,DESCRIPTION,STATUS,OWNER",
-            # Opcional: Filtrar apenas tickets não fechados para performance
-            # "oslc.where": 'status!="CLOSED"' 
+            "oslc.select": "TICKETID,DESCRIPTION,STATUS,OWNER", 
         }
 
         headers = {
@@ -102,7 +100,6 @@ class Command(BaseCommand):
 
         for item in items:
             mx_id = str(item.get('ticketid', ''))
-            # mx_status não precisa ser extraído aqui, será usado dentro do _atualizar_ticket
             mx_desc_raw = item.get('description', '')
             mx_desc_clean = mx_desc_raw.strip().lower()
 
@@ -111,11 +108,9 @@ class Command(BaseCommand):
 
             tickets_para_processar = []
 
-            # --- ESTRATÉGIA 1: ID do Maximo (Já vinculado) ---
             if mx_id in tickets_por_id:
                 tickets_para_processar.append(tickets_por_id[mx_id])
             
-            # --- ESTRATÉGIA 2: Busca por Texto (Vínculo Inicial) ---
             else:
                 matches_encontrados = []
                 
@@ -144,9 +139,7 @@ class Command(BaseCommand):
                     if t_match in tickets_sem_id:
                         tickets_sem_id.remove(t_match)
 
-            # --- PROCESSAMENTO DE ATUALIZAÇÃO (CORRIGIDO) ---
             for ticket in tickets_para_processar:
-                # CORREÇÃO AQUI: Passamos 'item' (o dicionário), e não status/id soltos
                 if self._atualizar_ticket(ticket, item):
                     total_alterados += 1
                     self.stdout.write(f"Ticket #{ticket.id} [ATUALIZADO] SR {mx_id}")
@@ -159,9 +152,11 @@ class Command(BaseCommand):
             self.stdout.write(msg_final)
 
     def _vincular_id(self, ticket: Ticket, novo_maximo_id: str):
+
         """Salva apenas o ID no banco."""
         logger.info(f"VINCULO: Ticket Local #{ticket.id} agora ligado ao Maximo ID {novo_maximo_id}")
         ticket.maximo_id = novo_maximo_id
+        
         # Importante salvar para refletir no objeto em memória se necessário depois
         ticket.save(update_fields=['maximo_id'])
 

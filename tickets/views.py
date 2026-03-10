@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 # PÁGINA INICIAL
 def pagina_inicial(request: HttpRequest) -> HttpResponse:
+
     if not request.user.is_authenticated:
         return redirect("tickets:login")
 
@@ -45,7 +46,6 @@ def pagina_inicial(request: HttpRequest) -> HttpResponse:
         "total_abertos": total_abertos,
         "total_geral": total_geral,
         "ultimos_tickets": ultimos_tickets,
-        # O nome do usuário já vem no request.user, mas podemos formatar se quiser
         "primeiro_nome": user.get_short_name() or user.username
     }
 
@@ -55,15 +55,18 @@ def pagina_inicial(request: HttpRequest) -> HttpResponse:
 # SUCESSO
 @login_required(login_url="/login/")
 def ticket_sucesso(request: HttpRequest) -> HttpResponse:
+
     return render(request, "tickets/sucesso.html")
 
 
 # LISTAGEM DE TICKETS
 @login_required(login_url="/login/")
 def meus_tickets(request: HttpRequest) -> HttpResponse:
+
     """
     Exibe a lista de tickets abertos pelo usuário logado.
     """
+
     # select_related busca as ForeignKeys numa única query SQL (JOIN)
     # 1. Mantém a sua busca atual (Exemplo genérico)
     tickets = Ticket.objects.filter(cliente=request.user).select_related('area', 'ambiente').order_by('-data_criacao')
@@ -84,6 +87,7 @@ def meus_tickets(request: HttpRequest) -> HttpResponse:
 # CRIAR TICKET
 @login_required(login_url="/login/")
 def criar_ticket(request: HttpRequest) -> HttpResponse:
+
     if request.method == "POST":
         form = TicketForm(request.POST, request.FILES, user=request.user)
 
@@ -106,7 +110,7 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                         for arquivo_temp in anexos_upload:
                             TicketAnexo.objects.create(ticket=ticket, arquivo=arquivo_temp)
                 
-                # --- SOLUÇÃO: Resgatamos os ficheiros seguros e guardados da base de dados ---
+                # Resgatamos os ficheiros seguros e guardados da base de dados
                 todos_anexos = []
                 
                 # A. Documento de Requisição (obrigatório)
@@ -120,6 +124,7 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                 # 3. Envio de E-mail
                 try:
                     MaximoEmailService.enviar_ticket_maximo(ticket, request.user, todos_anexos)
+
                 except Exception as e:
                     logger.error(f"Erro no envio de e-mail (Ticket {ticket.id}): {e}")
 
@@ -128,6 +133,7 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
             except Exception as e:
                 logger.error(f"Erro ao criar ticket na base de dados: {e}")
                 messages.error(request, "Ocorreu um erro ao guardar o ticket. Tente novamente.")
+
     else:
         form = TicketForm(user=request.user)
 
@@ -137,6 +143,7 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
 # DETALHE DO TICKET
 @login_required(login_url="/login/")
 def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
+
     ticket = get_object_or_404(Ticket, pk=pk)
     origem = request.GET.get("origin")
 
@@ -206,16 +213,21 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
 
             # Fallback para navegador sem JS (comportamento antigo)
             url_destino = reverse("tickets:detalhe_ticket", args=[pk])
+
             if origem:
                 return redirect(f"{url_destino}?origin={origem}")
+            
             return redirect(url_destino)
 
         else:
+
             if request.headers.get("x-requested-with") == "XMLHttpRequest":
                 return JsonResponse(
                     {"status": "error", "errors": form.errors}, status=400
                 )
+            
             messages.error(request, "Erro ao enviar mensagem.")
+
     else:
         form = TicketInteracaoForm()
 
@@ -232,6 +244,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required(login_url="/login/")
 def fila_atendimento(request: HttpRequest) -> HttpResponse:
+
     """
     Exibe a fila de tickets.
     - Suporte (Staff) / Liderança: Veem TODOS os tickets.
@@ -241,7 +254,7 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     # 1. Identificação de Perfil
     is_consultor = request.user.groups.filter(name="Consultores").exists()
     
-    # NOVO: Verifica se o usuário é do grupo 'lider_suporte'
+    # Verifica se o usuário é do grupo 'lider_suporte'
     is_lider = request.user.groups.filter(name="lider_suporte").exists()
     
     # Verifica se é equipe de suporte (Staff/Admin)
@@ -259,16 +272,17 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
         .order_by("-data_criacao")
     )
 
-    # --- LÓGICA DE VISIBILIDADE ---
+    # LÓGICA DE VISIBILIDADE 
     # O filtro por dono só é aplicado se for Consultor E NÃO FOR (Suporte OU Líder)
     # Se FOLIVEIRA estiver no grupo 'lider_suporte', ele pula este if e vê tudo.
     if is_consultor and not is_support and not is_lider:
+
         if request.user.person_id:
             tickets = tickets.filter(owner__iexact=request.user.person_id)
+
         else:
             tickets = Ticket.objects.none()
             messages.warning(request, "Seu usuário não possui um ID Maximo configurado.")
-    # ------------------------------
 
     # 4. Captura dos Filtros via GET
     status_filter = request.GET.get("status")
@@ -322,7 +336,6 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
         "status_choices": status_choices,
         "filtros_atuais": request.GET,
         "stats": stats,
-        # Passamos as flags para o template
         "is_consultor": is_consultor,
         "is_lider": is_lider, 
     }
@@ -332,9 +345,11 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
 
 @login_required(login_url="/login/")
 def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
+
     """
     Serve o anexo de forma segura e trata erros caso o arquivo não exista.
     """
+
     # 1. Busca a interação ou retorna 404 se o ID não existir no banco
     interacao = get_object_or_404(TicketInteracao, pk=interacao_id)
     ticket = interacao.ticket
@@ -385,12 +400,15 @@ def marcar_notificacao_lida(request, notificacao_id):
 
     if notificacao.link:
         return redirect(notificacao.link)
+    
     return redirect("tickets:pagina_inicial")
     
 def login_view(request: HttpRequest) -> HttpResponse:
+
     """
     Gerencia o login e a troca de senha obrigatória na mesma tela.
     """
+
     if request.user.is_authenticated:
         return redirect("tickets:pagina_inicial")
 
@@ -414,8 +432,10 @@ def login_view(request: HttpRequest) -> HttpResponse:
                 update_session_auth_hash(request, user)
                 
                 remember_me = request.session.get('remember_me_pending', False)
+
                 if remember_me:
                     request.session.set_expiry(1209600)
+
                 else:
                     request.session.set_expiry(0)
                 
@@ -425,6 +445,7 @@ def login_view(request: HttpRequest) -> HttpResponse:
                     del request.session['remember_me_pending']
                 
                 messages.success(request, "Senha definida com sucesso! Bem-vindo ao portal.")
+
                 return redirect("tickets:pagina_inicial")
 
         elif form.is_valid():
@@ -436,11 +457,13 @@ def login_view(request: HttpRequest) -> HttpResponse:
                 request.session['user_id_troca_senha'] = user.id
                 request.session['remember_me_pending'] = remember_me
                 form_troca_senha = SetPasswordForm(user)
+
             else:
                 auth_login(request, user, backend='tickets.backend.EmailBackend')
                 
                 if remember_me:
                     request.session.set_expiry(1209600)
+
                 else:
                     request.session.set_expiry(0)
 
@@ -451,4 +474,5 @@ def login_view(request: HttpRequest) -> HttpResponse:
         "form_troca_senha": form_troca_senha,
         "is_troca_senha": bool(form_troca_senha)
     }
+    
     return render(request, "tickets/login.html", context)

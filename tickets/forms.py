@@ -1,6 +1,6 @@
 import os
 import mimetypes
-from typing import Any, Dict
+from typing import Any
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, SetPasswordForm
@@ -15,10 +15,12 @@ Cliente = get_user_model()
 # --- UTILITÁRIO DE VALIDAÇÃO (DRY & Segurança) ---
 
 def _validar_anexo_comum(arquivo: Any) -> Any:
+
     """
     Validação centralizada para uploads (Ticket e Chat).
     Verifica tamanho, extensão e MIME type.
     """
+
     if not arquivo:
         return None
 
@@ -73,9 +75,11 @@ def _validar_anexo_comum(arquivo: Any) -> Any:
 # 1. FORMULÁRIOS DE AUTENTICAÇÃO E SENHA
 
 class EmailAuthenticationForm(AuthenticationForm):
+
     """
     Formulário de autenticação customizado para usar E-mail como login.
     """
+
     username = forms.CharField(
         label="E-mail",
         max_length=254,
@@ -88,6 +92,7 @@ class EmailAuthenticationForm(AuthenticationForm):
             }
         ),
     )
+
     password = forms.CharField(
         label="Senha",
         widget=forms.PasswordInput(
@@ -106,10 +111,12 @@ class EmailAuthenticationForm(AuthenticationForm):
 
 
 class NovaSenhaForm(SetPasswordForm):
+
     """
     Formulário de Troca de Senha Obrigatória no Primeiro Acesso.
     Herda as validações nativas do Django (AUTH_PASSWORD_VALIDATORS).
     """
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         # Remove os textos de ajuda nativos gigantes do Django 
@@ -122,9 +129,11 @@ class NovaSenhaForm(SetPasswordForm):
 # 2. FORMULÁRIO DE ABERTURA DE TICKET
 
 class TicketForm(forms.ModelForm):
+
     """
     Formulário principal de abertura de chamados.
     """
+
     documento_requisicao = forms.FileField(
         required=True,
         widget=forms.FileInput(attrs={"class": "form-control"}),
@@ -141,6 +150,7 @@ class TicketForm(forms.ModelForm):
     )
 
     class Meta:
+
         model = Ticket
         fields = ["sumario", "descricao", "ambiente", "prioridade", "area"]
 
@@ -157,6 +167,7 @@ class TicketForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         if user:
+
             self.fields["ambiente"].queryset = Ambiente.objects.filter(clientes=user)
 
             location_str = str(user.location).upper() if getattr(user, "location", None) else ""
@@ -173,25 +184,32 @@ class TicketForm(forms.ModelForm):
                 self.fields["area"].widget = forms.HiddenInput()
 
     def clean_documento_requisicao(self) -> Any:
+
         doc = self.cleaned_data.get("documento_requisicao")
+
         if doc:
             ext = os.path.splitext(doc.name)[1].lower()
             if ext != '.docx':
                 raise ValidationError("Formato inválido. O Documento de Requisição deve ser um arquivo .docx.")
             return _validar_anexo_comum(doc)
+        
         return doc
     
     def clean_arquivo(self) -> Any:
+
         arquivos = self.files.getlist("arquivo")
         if not arquivos:
             return None
 
         for f in arquivos:
             _validar_anexo_comum(f)
+
         return arquivos
 
     def save(self, commit: bool = True) -> Any:
+
         ticket = super().save(commit=False)
+
         if commit:
             ticket.save()
         return ticket
@@ -200,7 +218,9 @@ class TicketForm(forms.ModelForm):
 # 3. FORMULÁRIO DE INTERAÇÃO (RESPOSTAS)
 
 class TicketInteracaoForm(forms.ModelForm):
+
     class Meta:
+
         model = TicketInteracao
         fields = ["mensagem", "anexo"]
         widgets = {
@@ -209,4 +229,6 @@ class TicketInteracaoForm(forms.ModelForm):
         }
 
     def clean_anexo(self) -> Any:
+
         return _validar_anexo_comum(self.cleaned_data.get("anexo"))
+    

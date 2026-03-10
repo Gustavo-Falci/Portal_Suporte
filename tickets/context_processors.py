@@ -3,10 +3,12 @@ from .models import Notificacao
 
 
 def notificacoes_usuario(request: HttpRequest) -> dict:
+
     """
     Disponibiliza as notificações em todos os templates.
     """
     if request.user.is_authenticated:
+        
         # 1. QuerySet Base: Todas as notificações não lidas deste usuário
         qs_nao_lidas = Notificacao.objects.filter(destinatario=request.user, lida=False)
 

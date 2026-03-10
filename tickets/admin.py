@@ -8,8 +8,9 @@ admin.site.site_title = "IT Consol Admin"
 admin.site.index_title = "Gestão de Utilizadores e Ativos"
 
 
-# --- INLINE: Chat dentro do Ticket ---
+# Chat dentro do Ticket
 class TicketInteracaoInline(admin.TabularInline):
+
     model = TicketInteracao
     extra = 0
     # Campos que não devem ser editados para manter integridade histórica
@@ -26,6 +27,7 @@ class TicketInteracaoInline(admin.TabularInline):
 
 @admin.register(Cliente)
 class ClienteAdmin(UserAdmin):
+
     list_display = (
         "username",
         "email",
@@ -58,6 +60,7 @@ class ClienteAdmin(UserAdmin):
     )
 
 class TicketAnexoInline(admin.TabularInline):
+
     model = TicketAnexo
     extra = 0
     readonly_fields = ('data_envio',)
@@ -66,6 +69,7 @@ class TicketAnexoInline(admin.TabularInline):
 
 @admin.register(Ticket)
 class TicketAdmin(admin.ModelAdmin):
+    
     list_display = (
         "id",
         "sumario",
@@ -89,7 +93,6 @@ class TicketAdmin(admin.ModelAdmin):
     readonly_fields = ("data_criacao", "data_atualizacao", "maximo_id")
     ordering = ("-data_criacao",)
 
-    # AQUI ESTÁ A MÁGICA: Os anexos aparecerão listados abaixo do formulário principal
     inlines = [TicketAnexoInline, TicketInteracaoInline]
 
     fieldsets = (
@@ -123,6 +126,7 @@ class TicketAdmin(admin.ModelAdmin):
 
 @admin.register(Ambiente)
 class AmbienteAdmin(admin.ModelAdmin):
+
     # Alteramos para usar uma função customizada para exibir os donos
     list_display = ("nome_ambiente", "numero_ativo", "get_clientes_vinculados")
     
@@ -141,6 +145,7 @@ class AmbienteAdmin(admin.ModelAdmin):
 
 @admin.register(Area)
 class AreaAdmin(admin.ModelAdmin):
+
     list_display = ("nome_area", "cliente")
     # Adicionado busca pelo cliente também
     search_fields = ("nome_area", "cliente__username")
@@ -151,6 +156,7 @@ class AreaAdmin(admin.ModelAdmin):
 
 @admin.register(TicketInteracao)
 class TicketInteracaoAdmin(admin.ModelAdmin):
+
     list_display = ("id", "ticket", "autor", "data_criacao", "tem_anexo")
     list_filter = ("data_criacao", "autor__username")
     search_fields = ("mensagem", "ticket__sumario")
@@ -163,9 +169,10 @@ class TicketInteracaoAdmin(admin.ModelAdmin):
         return bool(obj.anexo)
 
 
-# BÓNUS: Registar Notificações ajuda a debugar se o "sininho" não funcionar
+# Registar Notificações ajuda a debugar se o "sininho" não funcionar
 @admin.register(Notificacao)
 class NotificacaoAdmin(admin.ModelAdmin):
+
     list_display = ("destinatario", "titulo", "lida", "data_criacao")
     list_filter = ("lida", "tipo")
     search_fields = ("destinatario__username", "mensagem")

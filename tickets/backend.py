@@ -10,6 +10,7 @@ Cliente = get_user_model()
 
 
 class EmailBackend(ModelBackend):
+
     """
     Autenticação via E-mail (Case Insensitive).
     """
@@ -21,6 +22,7 @@ class EmailBackend(ModelBackend):
         password: Optional[str] = None,
         **kwargs: Any,
     ) -> Optional[Any]:
+        
         # Suporte caso o campo venha como 'email' nos kwargs
         if username is None:
             username = kwargs.get("email")
@@ -31,11 +33,13 @@ class EmailBackend(ModelBackend):
         logger.info(f"Tentativa de login para: {username}")
 
         try:
+            
             # 1. Busca Case-Insensitive (__iexact)
             # Resolve o problema de 'User@Example.com' vs 'user@example.com'
             user = Cliente.objects.get(email__iexact=username)
 
         except Cliente.DoesNotExist:
+
             # 2. Mitigação de Timing Attack (Enumeração de Usuários)
             # Mesmo que o usuário não exista, rodamos um hash de senha dummy
             # para que o tempo de resposta seja similar ao de um usuário existente.
@@ -45,6 +49,7 @@ class EmailBackend(ModelBackend):
             return None
 
         except Cliente.MultipleObjectsReturned:
+
             # Isso indica sujeira no banco de dados (emails duplicados)
             logger.critical(
                 f"INTEGRIDADE COMPROMETIDA: Múltiplos usuários com email {username}"

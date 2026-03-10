@@ -16,9 +16,11 @@ class MaximoEmailService:
 
     @staticmethod
     def gerar_corpo_maximo(ticket: Ticket, usuario: Cliente) -> str:
+
         """
         Gera o corpo técnico exigido pelo Maximo Listener.
         """
+
         descricao_limpa = strip_tags(ticket.descricao).replace('\n', '<br>')
         sumario_limpo = strip_tags(ticket.sumario)
         prioridade = ticket.prioridade
@@ -55,10 +57,12 @@ class MaximoEmailService:
     def enviar_ticket_maximo(
         cls, ticket: Ticket, usuario: Cliente, arquivos_upload: list | None = None
     ):
+        
         """
         Orquestra o envio do e-mail de abertura para o Maximo.
         Agora suporta uma lista de múltiplos anexos.
         """
+
         destinatario = settings.EMAIL_DESTINATION
         remetente = settings.DEFAULT_FROM_EMAIL
 
@@ -94,12 +98,14 @@ class MaximoEmailService:
                     logger.error(f"Erro ao anexar arquivo '{getattr(arquivo, 'name', '?')}' no service: {e}")
                 
                 finally:
+
                     # 5. Segurança: Fecha o arquivo para liberar memória do servidor
                     if hasattr(arquivo, 'closed') and not arquivo.closed:
                         arquivo.close()
 
         try:
             email.send()
+
         except Exception as e:
             logger.error(
                 f"Erro crítico ao enviar e-mail para Maximo (Ticket {ticket.id}): {e}"
@@ -109,6 +115,7 @@ class MaximoEmailService:
 
 
 class NotificationService:
+
     """
     Responsabilidade Única: Centralizar a comunicação com humanos.
     Gerencia notificações internas (Sino/Banco) e envios de E-mail (SMTP)
@@ -117,9 +124,11 @@ class NotificationService:
 
     @staticmethod
     def _enviar_email_generico(destinatarios: list, assunto: str, corpo_html: str):
+
         """
         Método auxiliar privado para evitar repetição de código de envio de e-mail.
         """
+
         if not destinatarios:
             return
 
@@ -132,16 +141,19 @@ class NotificationService:
             )
             email.content_subtype = "html"  # Define que o corpo é HTML
             email.send()
+
         except Exception as e:
             logger.error(f"Erro ao enviar notificação por e-mail: {e}")
 
     @classmethod
     def notificar_mudanca_status(cls, ticket: Ticket, status_anterior_display: str):
+
         """
         Notifica o Cliente quando o status do chamado muda.
         1. Cria notificação interna.
         2. Envia e-mail.
         """
+
         status_novo = ticket.get_status_maximo_display()
 
         # 1. Notificação Interna (Sino)
@@ -174,6 +186,7 @@ class NotificationService:
 
     @classmethod
     def notificar_nova_interacao(cls, ticket: Ticket, interacao: TicketInteracao):
+
         """
         Envia notificação apenas para os envolvidos:
         1. Cliente dono do ticket.
@@ -181,7 +194,9 @@ class NotificationService:
         3. Membros do grupo 'lider_suporte'.
         * O autor da mensagem nunca é notificado.
         """
+
         try:
+
             # 1. Identificar Destinatários (Set para evitar duplicatas)
             destinatarios = set()
 
@@ -192,6 +207,7 @@ class NotificationService:
             # B. Adiciona o Consultor Responsável (Owner)
             # O campo ticket.owner é uma string (PersonID). Precisamos do objeto Cliente/User.
             if ticket.owner:
+
                 # Busca Case-Insensitive pelo person_id
                 consultor = Cliente.objects.filter(person_id__iexact=ticket.owner).first()
                 if consultor and consultor.email:
@@ -258,6 +274,7 @@ class NotificationService:
 
 
 class MaximoSenderService:
+
     """
     Serviço responsável por enviar interações do Portal para o IBM Maximo (Worklogs).
     """
@@ -267,10 +284,12 @@ class MaximoSenderService:
 
     @staticmethod
     def enviar_interacao(ticket: Ticket, interacao: TicketInteracao) -> bool:
+
         """
         Envia uma nova mensagem do chat para o Worklog do Maximo.
         Gatilho: Botão 'Enviar' no detalhe do ticket.
         """
+        
         if not ticket.maximo_id:
             logger.warning(f"Tentativa de envio para Maximo falhou: Ticket {ticket.id} não possui maximo_id.")
             return False

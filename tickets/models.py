@@ -6,10 +6,12 @@ from django.utils import timezone
 
 
 def ticket_upload_path(instance, filename):
+
     """
     Gera um caminho organizado: tickets/ANO/MES/uuid_nomedoarquivo.ext
     Evita colisão de nomes e diretórios com milhares de arquivos.
     """
+
     # Se a instância ainda não tem ID (criação), usamos data
     ext = filename.split(".")[-1]
     new_filename = f"{uuid.uuid4().hex[:10]}.{ext}"
@@ -18,9 +20,11 @@ def ticket_upload_path(instance, filename):
 
 
 def interacao_upload_path(instance, filename):
+
     """
     Organiza anexos do chat: tickets/ID_DO_TICKET/chat/nomedoarquivo
     """
+
     # Tenta pegar o ID do ticket. Se não existir, usa 'sem_ticket'
     ticket_id = instance.ticket.id if instance.ticket else "temp"
     return f"tickets/{ticket_id}/chat/{filename}"
@@ -101,6 +105,7 @@ class Cliente(AbstractUser):
 
 
 class Ambiente(models.Model):
+
     #cliente = models.ForeignKey(
     #    Cliente, on_delete=models.CASCADE, related_name="ambientes"
     #)
@@ -119,6 +124,7 @@ class Ambiente(models.Model):
 
 
 class Area(models.Model):
+
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="areas")
     nome_area = models.CharField(max_length=100)
 
@@ -127,13 +133,16 @@ class Area(models.Model):
 
 
 class Ticket(models.Model):
+
     # Vínculos
     cliente = models.ForeignKey(
         Cliente, on_delete=models.CASCADE, related_name="tickets"
     )
+
     ambiente = models.ForeignKey(
         Ambiente, on_delete=models.SET_NULL, null=True, blank=False
     )
+
     area = models.ForeignKey(Area, on_delete=models.SET_NULL, null=True, blank=True)
 
     # Dados do Chamado
@@ -199,10 +208,14 @@ class Ticket(models.Model):
 
     @property
     def badge_class(self):
+
         """Retorna a classe CSS do Bootstrap para o status."""
+
         status = self.status_maximo
         if status in ["RESOLVED", "TSTCLIOK", "IMPPRODOK", "APPR"]:
+
             return "bg-success"
+        
         elif status in [
             "INPROG",
             "PENDING",
@@ -215,32 +228,45 @@ class Ticket(models.Model):
             "SLAHOLD",
             "QUEUED",
         ]:
+            
             return "bg-warning text-dark"
+        
         elif status in ["TSTCLIFAIL", "CRITFAIL", "REJECTED", "ROLLBACK"]:
+
             return "bg-danger"
+        
         elif status in ["CLOSED", "CANCELLED", "HISTEDIT", "DRAFT"]:
+
             return "bg-secondary"
+        
         else:
+
             return "bg-primary"
     
     @property
     def tem_anexos(self):
+
         """Retorna True se houver pelo menos um arquivo anexado."""
+
         return self.anexos.exists()
     
     @property
     def is_closed(self) -> bool:
+
         """
         Verifica se o ticket está em um estado terminal onde interações não são mais permitidas.
         """
+
         # Ajuste as strings abaixo conforme estão EXATAMENTE no seu banco/choices
         status_terminais = ['RESOLVED', 'CLOSED', 'CANCELLED']
         return self.status_maximo in status_terminais
         
 class TicketAnexo(models.Model):
+
     """
     Modelo para suportar múltiplos arquivos por Ticket.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     ticket = models.ForeignKey(Ticket, related_name='anexos', on_delete=models.CASCADE)
     arquivo = models.FileField(upload_to=ticket_upload_path)
@@ -255,10 +281,13 @@ class TicketAnexo(models.Model):
 
 
 class TicketInteracao(models.Model):
+
     ticket = models.ForeignKey(
         Ticket, on_delete=models.CASCADE, related_name="interacoes"
     )
+
     autor = models.ForeignKey(Cliente, on_delete=models.CASCADE, verbose_name="Autor")
+
     mensagem = models.TextField(verbose_name="Mensagem")
 
     # MELHORIA: upload_to organizado
@@ -268,9 +297,11 @@ class TicketInteracao(models.Model):
         blank=True,
         verbose_name="Anexo (Opcional)",
     )
+
     data_criacao = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+
         ordering = ["data_criacao"]
         db_table = "ticket_interacoes"
         verbose_name = "Interação"
@@ -291,10 +322,12 @@ class TicketInteracao(models.Model):
     
     @property
     def filename_short(self):
+
         """
         Retorna uma versão encurtada do nome, mantendo o início e a extensão.
         Ex: 'Relatorio_Financeiro_Final_2024.pdf' -> 'Relatorio_Fin...2024.pdf'
         """
+
         if not self.anexo:
             return None
             
@@ -310,6 +343,7 @@ class TicketInteracao(models.Model):
 
 
 class Notificacao(models.Model):
+
     TIPO_CHOICES = (
         ("mensagem", "Nova Mensagem"),
         ("status", "Mudança de Status"),
@@ -319,6 +353,7 @@ class Notificacao(models.Model):
     destinatario = models.ForeignKey(
         Cliente, on_delete=models.CASCADE, related_name="notificacoes"
     )
+    
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, null=True, blank=True)
 
     titulo = models.CharField(max_length=50, default="Nova Notificação")

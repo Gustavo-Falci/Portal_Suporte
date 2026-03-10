@@ -3,16 +3,14 @@ from django.urls import path
 from django.contrib.auth.views import LogoutView
 from django.conf import settings
 from django.conf.urls.static import static
-from . import views, forms
+from . import views
 
 app_name = "tickets"
 
 urlpatterns = [
     # Páginas Públicas / Iniciais
     path("", views.pagina_inicial, name="pagina_inicial"),
-
     path("login/", views.login_view, name="login"),
-    
     path("logout/", LogoutView.as_view(), name="logout"),
 
     # Fluxo de Tickets

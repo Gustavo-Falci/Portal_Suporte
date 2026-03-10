@@ -123,13 +123,11 @@ class Command(BaseCommand):
     def _processar_logs(self, ticket, logs, bot_user) -> int:
         count = 0
         for log in logs:
-            # --- 1. FILTRO DE TIPO ---
-            # Filtra apenas logs do tipo CLIENTNOTE
+            
             tipo = log.get("logtype", "").upper()
             autor = log.get("modifyby", "SUPORTE").upper()
 
-            # --- 2. APLICAÇÃO DA REGRA DE NEGÓCIO ---
-            # Ignora se NÃO for CLIENTNOTE OU se for o robô de integração
+            
             if tipo != "CLIENTNOTE" or autor == "MXINTADM":
                 continue
 
