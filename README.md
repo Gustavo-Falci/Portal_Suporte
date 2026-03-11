@@ -56,34 +56,36 @@ O sistema está centrado no app principal `tickets`. Os principais modelos de da
 ### 1. Criação via Email Listener
 A criação inicial de tickets no Maximo é feita disparando um e-mail com um *payload* posicional estrito no corpo da mensagem. O serviço de e-mail formata os dados para que o Maximo processe as tags e gere o ticket automaticamente.
 
-**Estrutura Obrigatória do Payload:**
+**Estrutura do Payload:**
+```bash
 <br>
 
 Descrição do problema: {descricao_problema}<br><br> 
 
-#MAXIMO_EMAIL_BEGIN<br>
-SR#DESCRIPTION={sumario}<br>
-;<br>
-SR#ASSETNUM={asset_num}<br>
-;<br>
-SR#REPORTEDPRIORITY={prioridade}<br>
-;<br>
-SR#ITC_AREA={area_selecionada}<br> ;<br>
-SR#LOCATION={location}<br>
-;<br>
-SR#AFFECTEDPERSONID={person_id}<br>
-;<br>
-SR#SITEID=ITCBR<br>
-;<br>
-LSNRACTION=CREATE<br>
-;<br>
-LSNRAPPLIESTO=SR<br>
-;<br>
-SR#CLASS=SR<br>
-;<br>
-SR#TICKETID=&AUTOKEY&<br>
-;<br>
-#MAXIMO_EMAIL_END<br><br>
+   #MAXIMO_EMAIL_BEGIN<br>
+   SR#DESCRIPTION={sumario}<br>
+   ;<br>
+   SR#ASSETNUM={asset_num}<br>
+   ;<br>
+   SR#REPORTEDPRIORITY={prioridade}<br>
+   ;<br>
+   SR#ITC_AREA={area_selecionada}<br> ;<br>
+   SR#LOCATION={location}<br>
+   ;<br>
+   SR#AFFECTEDPERSONID={person_id}<br>
+   ;<br>
+   SR#SITEID=ITCBR<br>
+   ;<br>
+   LSNRACTION=CREATE<br>
+   ;<br>
+   LSNRAPPLIESTO=SR<br>
+   ;<br>
+   SR#CLASS=SR<br>
+   ;<br>
+   SR#TICKETID=&AUTOKEY&<br>
+   ;<br>
+   #MAXIMO_EMAIL_END<br><br>
+```
 
 ### 2. Sincronização de Worklogs via API (API REST)
 As interações/respostas inseridas no portal (`TicketInteracao`) são enviadas para o Maximo através de requisições REST POST (`MaximoSenderService`), sincronizando o chat do cliente diretamente com os *Worklogs* do Service Request no IBM Maximo.
