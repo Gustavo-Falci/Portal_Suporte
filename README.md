@@ -62,29 +62,29 @@ A criação inicial de tickets no Maximo é feita disparando um e-mail com um *p
 
 Descrição do problema: {descricao_problema}<br><br> 
 
-   #MAXIMO_EMAIL_BEGIN<br>
-   SR#DESCRIPTION={sumario}<br>
-   ;<br>
-   SR#ASSETNUM={asset_num}<br>
-   ;<br>
-   SR#REPORTEDPRIORITY={prioridade}<br>
-   ;<br>
-   SR#ITC_AREA={area_selecionada}<br> ;<br>
-   SR#LOCATION={location}<br>
-   ;<br>
-   SR#AFFECTEDPERSONID={person_id}<br>
-   ;<br>
-   SR#SITEID=ITCBR<br>
-   ;<br>
-   LSNRACTION=CREATE<br>
-   ;<br>
-   LSNRAPPLIESTO=SR<br>
-   ;<br>
-   SR#CLASS=SR<br>
-   ;<br>
-   SR#TICKETID=&AUTOKEY&<br>
-   ;<br>
-   #MAXIMO_EMAIL_END<br><br>
+#MAXIMO_EMAIL_BEGIN<br>
+SR#DESCRIPTION={sumario}<br>
+;<br>
+SR#ASSETNUM={asset_num}<br>
+;<br>
+SR#REPORTEDPRIORITY={prioridade}<br>
+;<br>
+SR#ITC_AREA={area_selecionada}<br> ;<br>
+SR#LOCATION={location}<br>
+;<br>
+SR#AFFECTEDPERSONID={person_id}<br>
+;<br>
+SR#SITEID=ITCBR<br>
+;<br>
+LSNRACTION=CREATE<br>
+;<br>
+LSNRAPPLIESTO=SR<br>
+;<br>
+SR#CLASS=SR<br>
+;<br>
+SR#TICKETID=&AUTOKEY&<br>
+;<br>
+#MAXIMO_EMAIL_END<br><br>
 ```
 
 ### 2. Sincronização de Worklogs via API (API REST)
