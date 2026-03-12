@@ -121,13 +121,26 @@ As interações/respostas inseridas no portal (`TicketInteracao`) são enviadas 
 4. **Configuração de Variáveis de Ambiente:**
 * Crie um arquivo `.env` na raiz do projeto contendo as chaves necessárias (baseie-se no `settings.py`):
    ```bash
+   # Chave secreta (pode ser qualquer coisa no local)
    SECRET_KEY=sua_chave_secreta_aqui
+   # Desenvolvimento local, VERIFY fica False
+   VERIFY=False
+   # Desenvolvimento local, DEBUG fica True
    DEBUG=True/False
+   # Hosts permitidos localmente
+   ALLOWED_HOSTS=localhost,127.0.0.1
+   # Banco de Dados
    DB_NAME=nome_do_banco
    DB_USER=usuario_db
    DB_PASSWORD=senha_db
    DB_HOST=localhost
    DB_PORT=5432
+   # Email
+   EMAIL_HOST_USER=email_do_host_smtp
+   EMAIL_HOST_PASSWORD=senha_do_email_host
+   # Integração IBM Maximo
+   MAXIMO_API_URL=sua_api_url_para_sincronização_dos_tickets
+   MAXIMO_API_URL_LOG=sua_api_url_para_importação_dos_logs
    MAXIMO_API_KEY=sua_chave_api_maximo
 
 5. **Execute as Migrações:**
