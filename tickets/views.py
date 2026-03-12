@@ -176,13 +176,24 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
             # Se for requisição normal, Flash Message e Redirect
             messages.error(request, msg_erro)
             return redirect("tickets:detalhe_ticket", pk=pk)
-        
+
         form = TicketInteracaoForm(request.POST, request.FILES)
+        
         if form.is_valid():
             interacao = form.save(commit=False)
             interacao.ticket = ticket
             interacao.autor = request.user
+            
+            if request.FILES:
+                arquivo_recebido = list(request.FILES.values())[0]
+                interacao.anexo = arquivo_recebido
+
             interacao.save()
+
+            interacao_salva = TicketInteracao.objects.get(id=interacao.id)
+            
+            # Verificamos se depois de salvar no banco, o arquivo continua lá
+            print(f"Status do banco de dados - Tem anexo? {bool(interacao.anexo)}\n")
 
             sincronizado = MaximoSenderService.enviar_interacao(ticket, interacao)
             
@@ -194,7 +205,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
             # Isso impede que o usuário fique esperando o SMTP responder
             email_thread = threading.Thread(
                 target=NotificationService.notificar_nova_interacao,
-                args=(ticket, interacao),
+                args=(ticket, interacao_salva),
             )
             email_thread.start()
 
@@ -207,7 +218,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
                 # Renderiza apenas o pedacinho do chat novo
                 html_mensagem = render_to_string(
                     "tickets/partials/chat_message.html",
-                    {"interacao": interacao, "request": request},
+                    {"interacao": interacao_salva, "request": request},
                 )
                 return JsonResponse({"status": "success", "html": html_mensagem})
 
@@ -356,18 +367,24 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
 
 @login_required(login_url="/login/")
 def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
-
     """
     Serve o anexo de forma segura e trata erros caso o arquivo não exista.
     """
-
     # 1. Busca a interação ou retorna 404 se o ID não existir no banco
     interacao = get_object_or_404(TicketInteracao, pk=interacao_id)
     ticket = interacao.ticket
 
-    # 2. Segurança: Verifica se o usuário é o dono do ticket OU da equipe de suporte
-    # (Reaproveitando a lógica is_support_team do seu Model Cliente)
-    if ticket.cliente != request.user and not request.user.is_support_team:
+    # 2. Segurança Unificada: Mesmas regras da view detalhe_ticket
+    is_dono = (ticket.cliente == request.user)
+    is_staff = getattr(request.user, 'is_support_team', False) or request.user.is_superuser
+    is_lider = request.user.groups.filter(name="lider_suporte").exists()
+    
+    is_owner_assigned = False
+    if request.user.person_id and ticket.owner:
+        is_owner_assigned = (ticket.owner.lower() == request.user.person_id.lower())
+
+    # Lógica de bloqueio: Se não for nenhuma das opções acima, expulsa
+    if not (is_dono or is_staff or is_lider or is_owner_assigned):
         messages.error(request, "Você não tem permissão para acessar este arquivo.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
@@ -377,21 +394,19 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
     try:
-        # 4. Tenta abrir o arquivo
-        # O .path pode falhar dependendo do Storage (S3 vs Local),
-        # mas .open() é o método agnóstico do Django.
-        arquivo = interacao.anexo.open()
+        # 4. Tenta abrir o arquivo em modo binário de leitura ('rb')
+        # Isso é fundamental para PDFs, Imagens e ZIPs não corromperem
+        arquivo = interacao.anexo.open('rb')
 
         # Opcional: Definir o nome do arquivo no download
         filename = os.path.basename(interacao.anexo.name)
 
         # Retorna o arquivo como download (as_attachment=True)
-        # ou visualização no navegador (as_attachment=False)
         return FileResponse(arquivo, as_attachment=True, filename=filename)
 
     except FileNotFoundError:
         # 5. Tratamento de Erro: Arquivo consta no banco, mas não no disco
-        messages.error(request, "Arquivo indisponivel, contate o suporte.")
+        messages.error(request, "Arquivo indisponível, contate o suporte.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
     except Exception as e:

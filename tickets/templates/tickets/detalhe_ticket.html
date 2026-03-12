@@ -207,16 +207,16 @@
         const fileErrorMsg = document.getElementById("fileErrorMsg");
         const fileInput = document.querySelector('input[type="file"]');
         
-        // NOVO: Elementos de erro da Mensagem
+        // Elementos de erro da Mensagem
         const msgError = document.getElementById("msgError");
-        const msgInput = document.getElementById("id_mensagem"); // ID padrão do Django para o campo mensagem
+        const msgInput = document.getElementById("id_mensagem");
 
         // Rola para o final do chat
         if(chatContainer) {
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
-        // --- FUNÇÕES DE LIMPEZA DE ERRO ---
+        // FUNÇÕES DE LIMPEZA DE ERRO
         // Limpa erro do Arquivo
         if(fileInput) {
             fileInput.addEventListener('change', function() {
@@ -226,7 +226,7 @@
             });
         }
 
-        // NOVO: Limpa erro da Mensagem ao digitar
+        // Limpa erro da Mensagem ao digitar
         if(msgInput) {
             msgInput.addEventListener('input', function() {
                 msgError.style.display = 'none';
