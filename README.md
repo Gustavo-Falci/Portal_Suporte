@@ -122,7 +122,7 @@ As interações/respostas inseridas no portal (`TicketInteracao`) são enviadas 
 * Crie um arquivo `.env` na raiz do projeto contendo as chaves necessárias (baseie-se no `settings.py`):
    ```bash
    SECRET_KEY=sua_chave_secreta_aqui
-   DEBUG=True
+   DEBUG=True/False
    DB_NAME=nome_do_banco
    DB_USER=usuario_db
    DB_PASSWORD=senha_db
