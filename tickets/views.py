@@ -190,7 +190,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
                 # Adiciona aviso visual (aparecerá se a página recarregar ou se o JS tratar mensagens)
                 messages.warning(request, "Mensagem salva localmente, mas houve instabilidade na sincronização com o IBM Maximo.")
 
-            # --- 1. ENVIO DE E-MAIL EM SEGUNDO PLANO (THREADING) ---
+            # 1. ENVIO DE E-MAIL EM SEGUNDO PLANO (THREADING)
             # Isso impede que o usuário fique esperando o SMTP responder
             email_thread = threading.Thread(
                 target=NotificationService.notificar_nova_interacao,
@@ -201,7 +201,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
             # Atualiza data de modificação
             ticket.save()
 
-            # --- 2. RESPOSTA PARA AJAX (SEM REFRESH) ---
+            # 2. RESPOSTA PARA AJAX (SEM REFRESH)
             # Verifica se a requisição veio do JavaScript
             if request.headers.get("x-requested-with") == "XMLHttpRequest":
                 # Renderiza apenas o pedacinho do chat novo
@@ -288,6 +288,7 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     status_filter = request.GET.get("status")
     location_filter = request.GET.get("location")
     search_query = request.GET.get("q")
+    prioridade_filter = request.GET.get("prioridade")
 
     # 5. Aplicação dos Filtros Opcionais
     if status_filter:
@@ -295,6 +296,9 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
 
     if location_filter:
         tickets = tickets.filter(cliente__location=location_filter)
+    
+    if prioridade_filter:
+        tickets = tickets.filter(prioridade=prioridade_filter)
 
     if search_query:
         tickets = tickets.filter(
@@ -318,6 +322,12 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
 
     status_choices = MAXIMO_STATUS_CHOICES
 
+    stats = {
+        "total": Ticket.objects.count(),
+        "criticos": Ticket.objects.filter(prioridade=1).count(),
+        "novos": Ticket.objects.filter(status_maximo="NEW").count(),
+    }
+
     # 7. Estatísticas
     stats = {
         "total": tickets.count(),
@@ -337,7 +347,8 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
         "filtros_atuais": request.GET,
         "stats": stats,
         "is_consultor": is_consultor,
-        "is_lider": is_lider, 
+        "is_lider": is_lider,
+        "stats": stats,
     }
     
     return render(request, "tickets/fila_atendimento.html", context)

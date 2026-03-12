@@ -23,15 +23,22 @@
                 <span class="fs-4 fw-bold font-monospace">{{ stats.total }}</span>
             </div>
             <div class="vr"></div>
-            <div class="text-end text-danger">
+            <a href="?prioridade=1" class="text-end text-decoration-none link-danger" title="Filtrar Críticos">
                 <span class="d-block" style="font-size: 0.7rem;">CRÍTICOS</span>
                 <span class="fs-4 fw-bold font-monospace">{{ stats.criticos }}</span>
-            </div>
+            </a>
             <div class="vr"></div>
-            <div class="text-end text-primary">
+            <a href="?status=NEW" class="text-end text-decoration-none link-primary" title="Filtrar Novos">
                 <span class="d-block" style="font-size: 0.7rem;">NOVOS</span>
                 <span class="fs-4 fw-bold font-monospace">{{ stats.novos }}</span>
-            </div>
+            </a>
+
+            {% if filtros_atuais %}
+            <div class="vr"></div>
+            <a href="{% url 'tickets:fila_atendimento' %}" class="text-end text-decoration-none text-muted align-self-end mb-2" title="Limpar Filtros">
+                <i class="bi bi-x-circle fs-4"></i>
+            </a>
+            {% endif %}
         </div>
     </div>
 
@@ -92,11 +99,11 @@
     {% if tickets %}
         <div class="d-flex flex-column gap-3">
             {% for ticket in tickets %}
-            <div class="card shadow-sm border-0 rounded-0 ticket-card-hover border-start border-4 {% if ticket.prioridade == 1 %}border-danger{% elif ticket.status_maximo == 'NEW' %}border-primary{% else %}border-light{% endif %}">
+            <div class="card shadow-sm border-0 rounded-0 ticket-card-hover border-start border-4 {% if ticket.prioridade == 1 or ticket.prioridade == '1' %}border-danger bg-danger bg-opacity-10{% elif ticket.status_maximo == 'NEW' %}border-primary{% else %}border-light{% endif %}">
                 <div class="card-body p-2">
                     <div class="row g-0 align-items-center">
                         
-                        <div class="col-md-1 bg-light d-flex flex-column align-items-center justify-content-center p-3 text-center" style="min-height: 100px;">
+                        <div class="col-md-1 bg-transparent d-flex flex-column align-items-center justify-content-center p-3 text-center" style="min-height: 100px;">
                             <span class="badge {{ ticket.badge_class }} rounded-0 mb-2 w-100 text-truncate">
                                 {{ ticket.get_status_maximo_display }}
                             </span>
@@ -107,16 +114,23 @@
                                     <div class="spinner-border text-secondary me-2" role="status" style="width: 1rem; height: 1rem; border-width: 2px;"></div>
                                 </span>
                             {% endif %}
-                            {% if ticket.prioridade == 1 %}
+                            
+                            {% if ticket.prioridade == 1 or ticket.prioridade == '1' %}
                                 <i class="bi bi-exclamation-triangle-fill text-danger mt-2" title="Prioridade Crítica"></i>
                             {% endif %}
                         </div>
+                        
                         <div class="col-md-8 p-3">
                             <div class="d-flex justify-content-between mb-1">
-                                <h5 class="card-title mb-0 fw-bold text-dark" style="max-width: 500px;">
+                                <h5 class="card-title mb-0 fw-bold text-dark d-flex align-items-center gap-2" style="max-width: 500px;">
                                     <a href="{% url 'tickets:detalhe_ticket' ticket.pk %}?origin=fila" class="text-decoration-none text-dark hover-link">
                                         {{ ticket.sumario }}
                                     </a>
+                                    {% if ticket.prioridade == 1 or ticket.prioridade == '1' %}
+                                        <span class="badge bg-danger rounded-0" style="font-size: 0.70rem; letter-spacing: 0.5px;">
+                                            <i></i>CRÍTICO
+                                        </span>
+                                    {% endif %}
                                 </h5>
                                 <small class="text-muted d-none d-md-block">
                                     <i class="bi bi-clock me-1"></i> {{ ticket.data_criacao|timesince }} atrás
