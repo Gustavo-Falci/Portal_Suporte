@@ -121,50 +121,54 @@
                         </div>
                         
                         <div class="col-md-8 p-3">
-                            <div class="d-flex justify-content-between mb-1">
+                            <div class="d-flex justify-content-between align-items-start mb-1">
                                 <h5 class="card-title mb-0 fw-bold text-dark d-flex align-items-center gap-2" style="max-width: 500px;">
                                     <a href="{% url 'tickets:detalhe_ticket' ticket.pk %}?origin=fila" class="text-decoration-none text-dark hover-link">
                                         {{ ticket.sumario }}
                                     </a>
                                 </h5>
-                                <small class="text-muted d-none d-md-block">
+                                <small class="text-muted d-none d-md-block text-end">
                                     <i class="bi bi-clock me-1"></i> {{ ticket.data_criacao|timesince }} atrás
                                 </small>
-
                             </div>
+                            
                             <p class="card-text text-secondary text-truncate mb-2 small">
                                 {{ ticket.descricao|truncatechars:55 }}
                             </p>
                             
-                            <div class="d-flex align-items-center flex-wrap gap-3 text-muted small mt-2">
-                                <span title="Ambiente">
-                                    <i class="bi bi-hdd-rack me-1"></i> {{ ticket.ambiente.nome_ambiente|default:"--" }}
-                                </span>
-                                {% if ticket.area %}
-                                <span title="Área">
-                                    <i class="bi bi-building me-1"></i> {{ ticket.area }}
-                                </span>
-                                {% endif %}
-                                
-                                <span class="border-start ps-3" title="Proprietário / Técnico Responsável">
-                                    {% if ticket.owner %}
-                                        <span class="badge bg-light text-dark border">
-                                            <i class="bi bi-person-badge-fill me-1 text-primary"></i> 
-                                            {{ ticket.owner }}
-                                        </span>
-                                    {% else %}
-                                        <span class="fst-italic opacity-50">
-                                            <i class="bi bi-person-dash me-1"></i> Sem técnico
-                                        </span>
+                            <div class="d-flex justify-content-between align-items-center w-100 mt-2">
+                                <div class="d-flex align-items-center flex-wrap gap-3 text-muted small">
+                                    <span title="Ambiente">
+                                        <i class="bi bi-hdd-rack me-1"></i> {{ ticket.ambiente.nome_ambiente|default:"--" }}
+                                    </span>
+                                    
+                                    {% if ticket.area %}
+                                    <span title="Área">
+                                        <i class="bi bi-building me-1"></i> {{ ticket.area }}
+                                    </span>
                                     {% endif %}
-                                    {% if ticket.prioridade == 1 or ticket.prioridade == '1' %}
-                                        <div class="ms-auto">
-                                            <span class="badge bg-danger rounded-0" title="Criticidade" style="font-size: 0.80rem; letter-spacing: 0.5px;">
-                                                CRÍTICO
+                                    
+                                    <span class="border-start ps-3" title="Proprietário / Técnico Responsável">
+                                        {% if ticket.owner %}
+                                            <span class="badge bg-light text-dark border">
+                                                <i class="bi bi-person-badge-fill me-1 text-primary"></i> 
+                                                {{ ticket.owner }}
                                             </span>
-                                        </div>
-                                    {% endif %}
-                                </span>
+                                        {% else %}
+                                            <span class="fst-italic opacity-50">
+                                                <i class="bi bi-person-dash me-1"></i> Sem técnico
+                                            </span>
+                                        {% endif %}
+                                    </span>
+                                </div>
+
+                                {% if ticket.prioridade == 1 or ticket.prioridade == '1' %}
+                                <div class="text-end ms-3">
+                                    <span class="badge bg-danger rounded-0" title="Criticidade" style="font-size: 0.75rem; letter-spacing: 0.5px; margin-right: 4rem;">
+                                        CRÍTICO
+                                    </span>
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
 
