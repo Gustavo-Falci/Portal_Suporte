@@ -21,6 +21,19 @@ import threading
 logger = logging.getLogger(__name__)
 
 
+# --- FUNÇÃO AUXILIAR DE PERMISSÕES ---
+def _usuario_tem_acesso_ticket(user: Cliente, ticket: Ticket) -> bool:
+    is_dono = (ticket.cliente == user)
+    is_staff = getattr(user, 'is_support_team', False) or user.is_superuser
+    is_lider = user.groups.filter(name="lider_suporte").exists()
+    
+    is_owner_assigned = False
+    if user.person_id and ticket.owner:
+        is_owner_assigned = (ticket.owner.lower() == user.person_id.lower())
+        
+    return is_dono or is_staff or is_lider or is_owner_assigned
+
+
 # PÁGINA INICIAL
 def pagina_inicial(request: HttpRequest) -> HttpResponse:
 
@@ -147,17 +160,8 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
     ticket = get_object_or_404(Ticket, pk=pk)
     origem = request.GET.get("origin")
 
-    is_dono = (ticket.cliente == request.user)
-    is_staff = getattr(request.user, 'is_support_team', False) or request.user.is_superuser
-    is_lider = request.user.groups.filter(name="lider_suporte").exists()
-    
-    # Verifica se é o consultor dono do ticket
-    is_owner_assigned = False
-    if request.user.person_id and ticket.owner:
-        is_owner_assigned = (ticket.owner.lower() == request.user.person_id.lower())
-
-    # Lógica de bloqueio: Se não for nenhuma das opções acima, expulsa
-    if not (is_dono or is_staff or is_lider or is_owner_assigned):
+    # Lógica de bloqueio unificada
+    if not _usuario_tem_acesso_ticket(request.user, ticket):
         messages.error(request, "Você não tem permissão para visualizar este ticket.")
         return redirect("tickets:meus_tickets")
 
@@ -374,19 +378,10 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
     interacao = get_object_or_404(TicketInteracao, pk=interacao_id)
     ticket = interacao.ticket
 
-    # 2. Segurança Unificada: Mesmas regras da view detalhe_ticket
-    is_dono = (ticket.cliente == request.user)
-    is_staff = getattr(request.user, 'is_support_team', False) or request.user.is_superuser
-    is_lider = request.user.groups.filter(name="lider_suporte").exists()
-    
-    is_owner_assigned = False
-    if request.user.person_id and ticket.owner:
-        is_owner_assigned = (ticket.owner.lower() == request.user.person_id.lower())
-
-    # Lógica de bloqueio: Se não for nenhuma das opções acima, expulsa
-    if not (is_dono or is_staff or is_lider or is_owner_assigned):
+    # 2. Segurança Unificada
+    if not _usuario_tem_acesso_ticket(request.user, ticket):
         messages.error(request, "Você não tem permissão para acessar este arquivo.")
-        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+        return redirect("tickets:meus_tickets")
 
     # 3. Verifica se o campo anexo está preenchido
     if not interacao.anexo:
@@ -406,12 +401,14 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
 
     except FileNotFoundError:
         # 5. Tratamento de Erro: Arquivo consta no banco, mas não no disco
+        logger.error(f"Tentativa de download falhou. Arquivo não encontrado no disco: {interacao.anexo.name}")
         messages.error(request, "Arquivo indisponível, contate o suporte.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
     except Exception as e:
         # 6. Erro genérico (ex: permissão de leitura no disco, erro de IO)
-        messages.error(request, f"Erro ao tentar abrir o anexo: {str(e)}")
+        logger.error(f"Erro inesperado ao servir anexo da interação {interacao_id}: {e}")
+        messages.error(request, "Ocorreu um erro interno ao processar o download. Tente novamente mais tarde.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
 

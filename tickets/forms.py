@@ -6,6 +6,7 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm, SetPasswordForm
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
+from django.conf import settings
 
 from .models import Ambiente, Area, Ticket, TicketInteracao
 
@@ -25,10 +26,11 @@ def _validar_anexo_comum(arquivo: Any) -> Any:
         return None
 
     # 1. Validar tamanho (Limite: 150MB)
-    limit_mb = 150
-    if arquivo.size > limit_mb * 1024 * 1024:
+    max_size_bytes = getattr(settings, 'FILE_UPLOAD_MAX_MEMORY_SIZE', 150 * 1024 * 1024)
+    if arquivo.size > max_size_bytes:
+        limit_mb = max_size_bytes / (1024 * 1024)
         raise ValidationError(
-            f"O arquivo é muito grande. Máximo permitido: {limit_mb}MB."
+            f"O arquivo é muito grande. Máximo permitido: {int(limit_mb)}MB."
         )
 
     # 2. Validar extensão
