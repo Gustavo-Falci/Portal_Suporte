@@ -69,7 +69,12 @@
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white py-3 border-bottom-0 d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 fw-bold h6"><i class="fa-solid fa-list-ul me-2 text-primary"></i>Ultimos tickets abertos</h5>
+                {% if user.is_superuser or not user.is_support_team and not user.is_consultor and not user.is_lider_suporte %}
                 <a href="{% url 'tickets:meus_tickets' %}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">Ver Todos</a>
+                {% endif %}
+                {% if user.is_support_team or user.is_consultor or user.is_lider_suporte %}
+                <a href="{% url 'tickets:fila_atendimento' %}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">Ver Todos</a>
+                {% endif %}
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
