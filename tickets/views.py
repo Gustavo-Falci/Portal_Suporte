@@ -42,8 +42,16 @@ def pagina_inicial(request: HttpRequest) -> HttpResponse:
 
     user = request.user
     
-    # 1. QuerySet Base (Apenas tickets deste cliente)
-    qs_tickets = Ticket.objects.filter(cliente=user)
+    # 1. QuerySet Base
+    if user.is_support_team or user.is_lider_suporte:
+        qs_tickets = Ticket.objects.exclude(maximo_id__isnull=True)
+    elif user.is_consultor:
+        if user.person_id:
+            qs_tickets = Ticket.objects.exclude(maximo_id__isnull=True).filter(owner__iexact=user.person_id)
+        else:
+            qs_tickets = Ticket.objects.none()
+    else:
+        qs_tickets = Ticket.objects.filter(cliente=user)
 
     # 2. Estatísticas Rápidas
     # Consideramos "Em Aberto" tudo que não está Fechado, Resolvido ou Cancelado
@@ -52,8 +60,8 @@ def pagina_inicial(request: HttpRequest) -> HttpResponse:
     total_abertos = qs_tickets.exclude(status_maximo__in=status_encerrados).count()
     total_geral = qs_tickets.count()
 
-    # 3. Últimos 3 Tickets (Para acesso rápido)
-    ultimos_tickets = qs_tickets.order_by('-data_criacao')[:3]
+    # 3. Últimos 3 Tickets Em Aberto (Para acesso rápido)
+    ultimos_tickets = qs_tickets.exclude(status_maximo__in=status_encerrados).order_by('-data_criacao')[:3]
 
     context = {
         "total_abertos": total_abertos,

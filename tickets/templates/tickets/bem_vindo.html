@@ -68,7 +68,15 @@
 
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white py-3 border-bottom-0 d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 fw-bold h6"><i class="fa-solid fa-list-ul me-2 text-primary"></i>Ultimos tickets abertos</h5>
+                <h5 class="mb-0 fw-bold h6"><i class="fa-solid fa-list-ul me-2 text-primary"></i>
+                    {% if user.is_consultor and not user.is_support_team and not user.is_lider_suporte %}
+                        Últimos tickets atribuídos
+                    {% elif user.is_support_team or user.is_lider_suporte %}
+                        Últimos tickets na fila
+                    {% else %}
+                        Últimos tickets abertos
+                    {% endif %}
+                </h5>
                 {% if user.is_superuser or not user.is_support_team and not user.is_consultor and not user.is_lider_suporte %}
                 <a href="{% url 'tickets:meus_tickets' %}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">Ver Todos</a>
                 {% endif %}
@@ -123,7 +131,15 @@
                             <tr>
                                 <td colspan="4" class="text-center py-5 text-muted">
                                     <i class="fa-regular fa-folder-open fa-2x mb-3 opacity-25"></i>
-                                    <p class="mb-0 small">Você ainda não tem tickets abertos.</p>
+                                    <p class="mb-0 small">
+                                        {% if user.is_consultor and not user.is_support_team and not user.is_lider_suporte %}
+                                            Você ainda não possui tickets atribuídos.
+                                        {% elif user.is_support_team or user.is_lider_suporte %}
+                                            Não há tickets na fila.
+                                        {% else %}
+                                            Você ainda não tem tickets abertos.
+                                        {% endif %}
+                                    </p>
                                 </td>
                             </tr>
                             {% endfor %}
