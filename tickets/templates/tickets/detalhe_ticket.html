@@ -72,6 +72,23 @@
                 </div>
             </div>
             {% endif %}
+            {% if ticket.anexos.all %}
+            <div class="mt-4 mb-3">
+                <h6 class="fw-bold">Documentos de Evidência:</h6>
+                <ul class="list-group">
+                    {% for anexo in ticket.anexos.all %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div class="text-truncate" style="max-width: 80%;">
+                                📄 {{ anexo.arquivo.name }}
+                            </div>
+                            <a href="{{ anexo.arquivo.url }}" class="btn btn-sm btn-outline-primary" target="_blank">
+                                <i class="bi bi-download"></i> Baixar
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
 
             <div class="d-flex align-items-center mb-3 mt-5">
                 <h4 class="h5 fw-bold mb-0">Chat</h4>
