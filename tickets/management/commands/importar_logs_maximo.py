@@ -59,7 +59,7 @@ class Command(BaseCommand):
                 params = {
                     "oslc.where": f'ticketid="{ticket.maximo_id}"',
                     # ALTERADO: Adicionado 'logtype' na solicitação
-                    "oslc.select": "ticketid,worklog{recordkey,modifyby,logtype,createdate,description,description_longdescription}",
+                    "oslc.select": "ticketid,worklog{recordkey,createby,modifyby,logtype,createdate,description,description_longdescription}",
                     "lean": 1
                 }
                 
@@ -122,13 +122,17 @@ class Command(BaseCommand):
 
     def _processar_logs(self, ticket, logs, bot_user) -> int:
         count = 0
+        # Cache local de usuários para evitar várias idas ao banco de dados no loop
+        user_cache = {}
+        
         for log in logs:
             
             tipo = log.get("logtype", "").upper()
-            autor = log.get("modifyby", "SUPORTE").upper()
+            autor_criacao_log = log.get("modifyby", "SUPORTE").upper()
+            autor = log.get("createby", "").upper()
 
             
-            if tipo != "CLIENTNOTE" or autor == "MXINTADM":
+            if tipo != "CLIENTNOTE" or autor_criacao_log == "MXINTADM":
                 continue
 
             # Pega descrição (Longa tem prioridade)
@@ -140,16 +144,28 @@ class Command(BaseCommand):
             if not msg_final_limpa:
                 continue
 
-            mensagem_formatada = f"📋 [{autor}]\n\n{msg_final_limpa}"
+            # Verifica se o 'autor' do Maximo possui vínculo com um usuário do Portal via person_id
+            if autor not in user_cache:
+                user_cache[autor] = User.objects.filter(person_id__iexact=autor).first()
+            
+            usuario_vinculado = user_cache[autor]
+            
+            if usuario_vinculado:
+                autor_interacao = usuario_vinculado
+                mensagem_formatada = msg_final_limpa
+            else:
+                autor_interacao = bot_user
+                mensagem_formatada = f"📋 [{autor}]\n\n{msg_final_limpa}"
 
-            # Verifica se já existe (Idempotência)
-            if TicketInteracao.objects.filter(ticket=ticket, mensagem=mensagem_formatada).exists():
+            # Verifica se já existe (Idempotência considerando o formato antigo e o novo)
+            mensagem_legada = f"📋 [{autor}]\n\n{msg_final_limpa}"
+            if TicketInteracao.objects.filter(ticket=ticket, mensagem__in=[mensagem_formatada, mensagem_legada]).exists():
                 continue
 
             # Cria a interação
             interacao = TicketInteracao.objects.create(
                 ticket=ticket,
-                autor=bot_user,
+                autor=autor_interacao,
                 mensagem=mensagem_formatada,
                 anexo=None
             )
