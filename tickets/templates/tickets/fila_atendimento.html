@@ -33,7 +33,7 @@
                 <span class="fs-4 fw-bold font-monospace">{{ stats.novos }}</span>
             </a>
 
-            {% if filtros_atuais %}
+            {% if tem_filtros %}
             <div class="vr"></div>
             <a href="{% url 'tickets:fila_atendimento' %}" class="text-end text-decoration-none text-muted align-self-end mb-2" title="Limpar Filtros">
                 <i class="bi bi-x-circle fs-4"></i>
@@ -88,9 +88,11 @@
                     <button type="submit" class="btn btn-primary w-100 rounded-0 fw-bold">
                         FILTRAR
                     </button>
+                    {% if tem_filtros %}
                     <a href="{% url 'tickets:fila_atendimento' %}" class="btn btn-outline-secondary rounded-0" title="Limpar Filtros">
                         <i class="bi bi-x-lg"></i>
                     </a>
+                    {% endif %}
                 </div>
             </form>
         </div>
@@ -255,7 +257,7 @@
     {% else %}
         <div class="text-center py-5">
             <div class="mb-3">
-                {% if is_consultor and not user.is_support_team and not is_lider and not filtros_atuais %}
+                {% if is_consultor and not user.is_support_team and not is_lider and not tem_filtros %}
                     <i class="bi bi-emoji-smile fs-1 text-muted opacity-25"></i>
                 {% else %}
                     <i class="bi bi-inbox fs-1 text-muted opacity-25"></i>
@@ -263,13 +265,13 @@
             </div>
             
             <h5 class="text-muted fw-normal">
-                {% if is_consultor and not user.is_support_team and not is_lider and not filtros_atuais %}
+                {% if is_consultor and not user.is_support_team and not is_lider and not tem_filtros %}
                     Você não possui tickets atribuídos no momento.
                 {% else %}
                     Nenhum ticket encontrado com esses filtros.
                 {% endif %}
             </h5>
-            {% if filtros_atuais %}
+            {% if tem_filtros %}
                 <a href="{% url 'tickets:fila_atendimento' %}" class="btn btn-link text-decoration-none">Limpar busca</a>
             {% endif %}
         </div>

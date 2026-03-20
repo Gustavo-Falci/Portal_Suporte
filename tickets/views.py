@@ -92,7 +92,22 @@ def meus_tickets(request: HttpRequest) -> HttpResponse:
     # 1. Mantém a sua busca atual (Exemplo genérico)
     tickets = Ticket.objects.filter(cliente=request.user).select_related('area', 'ambiente').order_by('-data_criacao')
 
-    # 2. APLICA A PAGINAÇÃO (Limite de 10)
+    # 2. Captura dos Filtros via GET
+    status_filter = request.GET.get("status")
+    search_query = request.GET.get("q")
+
+    # 3. Aplicação dos Filtros Opcionais
+    if status_filter:
+        tickets = tickets.filter(status_maximo=status_filter)
+
+    if search_query:
+        tickets = tickets.filter(
+            Q(maximo_id__icontains=search_query)
+            | Q(sumario__icontains=search_query)
+            | Q(descricao__icontains=search_query)
+        )
+
+    # 4. APLICA A PAGINAÇÃO (Limite de 10)
     paginator = Paginator(tickets, 10) 
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
@@ -100,6 +115,8 @@ def meus_tickets(request: HttpRequest) -> HttpResponse:
     context = {
         # Passamos 'page_obj' mas com o nome 'tickets' para não quebrar o loop do HTML
         "tickets": page_obj, 
+        "status_choices": MAXIMO_STATUS_CHOICES,
+        "filtros_atuais": request.GET,
     }
     
     return render(request, "tickets/meus_tickets.html", context)
@@ -296,8 +313,6 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     )
 
     # LÓGICA DE VISIBILIDADE 
-    # O filtro por dono só é aplicado se for Consultor E NÃO FOR (Suporte OU Líder)
-    # Se FOLIVEIRA estiver no grupo 'lider_suporte', ele pula este if e vê tudo.
     if is_consultor and not is_support and not is_lider:
 
         if request.user.person_id:
@@ -312,6 +327,9 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     location_filter = request.GET.get("location")
     search_query = request.GET.get("q")
     prioridade_filter = request.GET.get("prioridade")
+
+    # Verifica se existe algum filtro de busca/refinamento aplicado (ignorando a paginação)
+    tem_filtros = bool(status_filter or location_filter or search_query or prioridade_filter)
 
     # 5. Aplicação dos Filtros Opcionais
     if status_filter:
@@ -372,6 +390,7 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
         "is_consultor": is_consultor,
         "is_lider": is_lider,
         "stats": stats,
+        "tem_filtros": tem_filtros,
     }
     
     return render(request, "tickets/fila_atendimento.html", context)

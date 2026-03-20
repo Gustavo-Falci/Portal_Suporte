@@ -21,6 +21,50 @@
         </div>
     </div>
 
+    <div class="card bg-light border-0 mb-4 rounded-0 shadow-sm">
+        <div class="card-body p-3">
+            <form method="GET" action="{% url 'tickets:meus_tickets' %}" class="row g-2 align-items-end">
+
+                <div class="col-md-5">
+                    <label class="form-label small fw-bold text-uppercase text-muted mb-1">Buscar</label>
+                    <div class="input-group">
+                        <span class="input-group-text border-end-0 rounded-0 text-muted ps-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search" viewBox="0 0 16 16">
+                                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                            </svg>
+                        </span>
+                        <input type="text" name="q" class="form-control border-start-0" 
+                            placeholder="Buscar por ID, Sumário ou Descrição..." 
+                            value="{{ filtros_atuais.q|default:'' }}">
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-uppercase text-muted mb-1">Status</label>
+                    <select name="status" class="form-select rounded-0">
+                        <option value="">Todos os Status</option>
+                        {% for key, value in status_choices %}
+                            <option value="{{ key }}" {% if filtros_atuais.status == key %}selected{% endif %}>
+                                {{ value }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary w-100 rounded-0 fw-bold">
+                        Filtrar
+                    </button>
+                    {% if filtros_atuais.q or filtros_atuais.status %}
+                        <a href="{% url 'tickets:meus_tickets' %}" class="btn btn-outline-secondary rounded-0" title="Limpar Filtros">
+                            <i class="bi bi-x-lg"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="card shadow-sm border-0" style="border-radius: 0;">
         <div class="card-body p-0">
             <div class="table-responsive">
