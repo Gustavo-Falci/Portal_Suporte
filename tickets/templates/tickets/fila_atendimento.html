@@ -32,13 +32,6 @@
                 <span class="d-block" style="font-size: 0.7rem;">NOVOS</span>
                 <span class="fs-4 fw-bold font-monospace">{{ stats.novos }}</span>
             </a>
-
-            {% if tem_filtros %}
-            <div class="vr"></div>
-            <a href="{% url 'tickets:fila_atendimento' %}" class="text-end text-decoration-none text-muted align-self-end mb-2" title="Limpar Filtros">
-                <i class="bi bi-x-circle fs-4"></i>
-            </a>
-            {% endif %}
         </div>
     </div>
 
