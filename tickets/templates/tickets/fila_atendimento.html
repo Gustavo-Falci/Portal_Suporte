@@ -94,7 +94,7 @@
     {% if tickets %}
         <div class="d-flex flex-column gap-3">
             {% for ticket in tickets %}
-            <div class="card shadow-sm border-0 rounded-0 ticket-card-hover border-start border-4 {% if ticket.prioridade == 1 or ticket.prioridade == '1' %}border-danger bg-danger bg-opacity-10{% elif ticket.status_maximo == 'NEW' %}border-primary{% else %}border-light{% endif %}">
+            <div id="ticket-{{ ticket.pk }}" class="card shadow-sm border-0 rounded-0 ticket-card-hover border-start border-4 {% if ticket.prioridade == 1 or ticket.prioridade == '1' %}border-danger bg-danger bg-opacity-10{% elif ticket.status_maximo == 'NEW' %}border-primary{% else %}border-light{% endif %}" style="scroll-margin-top: 300px;">
                 <div class="card-body p-2">
                     <div class="row g-0 align-items-center">
                         

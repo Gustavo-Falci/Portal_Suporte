@@ -80,7 +80,7 @@
                     </thead>
                     <tbody>
                         {% for ticket in tickets %}
-                        <tr>
+                        <tr id="ticket-{{ ticket.pk }}" style="scroll-margin-top: 100px;">
                             <td class="ps-4">
                                 {% if ticket.maximo_id %}
                                     <span class="badge bg-light text-dark border font-monospace">
