@@ -340,6 +340,9 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     
     if prioridade_filter:
         tickets = tickets.filter(prioridade=prioridade_filter)
+        # Ignora os tickets críticos que já foram finalizados (a menos que um status específico seja filtrado)
+        if prioridade_filter == "1" and not status_filter:
+            tickets = tickets.exclude(status_maximo__in=['RESOLVED', 'CLOSED', 'CANCELLED'])
 
     if search_query:
         tickets = tickets.filter(
@@ -363,16 +366,11 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
 
     status_choices = MAXIMO_STATUS_CHOICES
 
-    stats = {
-        "total": Ticket.objects.count(),
-        "criticos": Ticket.objects.filter(prioridade=1).count(),
-        "novos": Ticket.objects.filter(status_maximo="NEW").count(),
-    }
-
     # 7. Estatísticas
+    status_encerrados = ['RESOLVED', 'CLOSED', 'CANCELLED']
     stats = {
         "total": tickets.count(),
-        "criticos": tickets.filter(prioridade=1).count(),
+        "criticos": tickets.filter(prioridade=1).exclude(status_maximo__in=status_encerrados).count(),
         "novos": tickets.filter(status_maximo="NEW").count(),
     }
 
