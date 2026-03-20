@@ -7,7 +7,7 @@
 <div class="container mt-5 mb-5">
     <div class="d-flex align-items-center mb-4">
         {% if origem == 'fila' %}
-            <a href="{% url 'tickets:fila_atendimento' %}" class="btn btn-outline-secondary me-3 rounded-0">
+            <a href="{{ voltar_url }}" class="btn btn-outline-secondary me-3 rounded-0">
                 <i class="bi bi-arrow-left"></i> Voltar
             </a>
         {% elif origem == 'inicio'%}
@@ -15,7 +15,7 @@
                 <i class="bi bi-arrow-left"></i> Voltar
             </a>
         {% else %}
-            <a href="{% url 'tickets:meus_tickets' %}" class="btn btn-outline-secondary me-3 rounded-0">
+            <a href="{{ voltar_url }}" class="btn btn-outline-secondary me-3 rounded-0">
                 <i class="bi bi-arrow-left"></i> Voltar
             </a>
         {% endif %} 

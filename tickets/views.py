@@ -112,6 +112,9 @@ def meus_tickets(request: HttpRequest) -> HttpResponse:
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
+    # Salva a URL completa (com filtros e paginação) na sessão
+    request.session['last_meus_tickets_url'] = request.get_full_path()
+
     context = {
         # Passamos 'page_obj' mas com o nome 'tickets' para não quebrar o loop do HTML
         "tickets": page_obj, 
@@ -271,6 +274,13 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
     else:
         form = TicketInteracaoForm()
 
+    # Determina a URL de retorno com base na origem preservando filtros e paginação
+    voltar_url = reverse("tickets:meus_tickets")
+    if origem == "fila":
+        voltar_url = request.session.get('last_fila_url', reverse("tickets:fila_atendimento"))
+    elif origem == "meus":
+        voltar_url = request.session.get('last_meus_tickets_url', reverse("tickets:meus_tickets"))
+
     interacoes = ticket.interacoes.select_related("autor").all()
 
     context = {
@@ -278,6 +288,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
         "interacoes": interacoes,
         "form": form,
         "origem": origem,
+        "voltar_url": voltar_url,
     }
     return render(request, "tickets/detalhe_ticket.html", context)
 
@@ -378,6 +389,9 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     paginator = Paginator(tickets, 15)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
+
+    # Salva a URL completa (com filtros e paginação) na sessão
+    request.session['last_fila_url'] = request.get_full_path()
 
     context = {
         "tickets": page_obj,
