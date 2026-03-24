@@ -61,7 +61,6 @@ PRIORIDADE_CHOICES = [
 
 # MODELS
 
-
 class Cliente(AbstractUser):
     location = models.CharField(max_length=200, blank=True, null=True)
     person_id = models.CharField(max_length=150, blank=True, null=True)
