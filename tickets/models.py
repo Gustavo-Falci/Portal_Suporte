@@ -30,31 +30,23 @@ def interacao_upload_path(instance, filename):
     return f"tickets/{ticket_id}/chat/{filename}"
 
 
-# --- CONSTANTES DE STATUS (Limpeza Visual) ---
+# CONSTANTES DE STATUS (Limpeza Visual)
 MAXIMO_STATUS_CHOICES = [
     ("NEW", "Novo"),
     ("QUEUED", "Em fila"),
     ("INPROG", "Em Andamento"),
     ("PENDING", "Pendente"),
-    ("APPR", "Aprovado"),
-    ("APPFML", "Aprovado pelo Gerenciador de Cumprimento"),
-    ("APPLM", "Aprovado pelo Gerente de Linha"),
     ("RESOLVED", "Resolvido"),
     ("CLOSED", "Fechado"),
     ("CANCELLED", "Cancelado"),
     ("REJECTED", "Rejeitado"),
-    ("DRAFT", "Rascunho"),
-    ("HISTEDIT", "Editado no Histórico"),
     ("TSTCLI", "Teste do cliente"),
     ("TSTCLIOK", "Teste do cliente OK"),
     ("TSTCLIFAIL", "Teste do cliente falhou"),
     ("IMPPRODOK", "Implementação em produção OK"),
     ("AGREUN", "Reunião Agendada"),
-    ("CRITFAIL", "Falha Crítica"),
-    ("ROLLBACK", "Rollback"),
     ("TREINAMTO", "Treinamento"),
     ("DOC", "Documentar"),
-    ("SLAHOLD", "Espera de SLA"),
 ]
 
 PRIORIDADE_CHOICES = [
@@ -67,7 +59,7 @@ PRIORIDADE_CHOICES = [
 ]
 
 
-# --- MODELS ---
+# MODELS
 
 
 class Cliente(AbstractUser):
