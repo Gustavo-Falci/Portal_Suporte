@@ -59,12 +59,12 @@
                         </div>
                         <div class="flex-grow-1 ms-3">
                             <p class="mb-0 small text-muted">Documento de requisição enviado na abertura do ticket:</p>
-                            <a href="{% url 'tickets:download_documento_requisicao' ticket.id %}" target="_blank" class="text-decoration-none fw-bold">
+                            <a href="{{ ticket.documento_requisicao.url }}" target="_blank" class="text-decoration-none fw-bold">
                                 {{ ticket.documento_requisicao.name|cut:"tickets/" }} 
                             </a>
                         </div>
                         <div>
-                            <a href="{% url 'tickets:download_documento_requisicao' ticket.id %}" download class="btn btn-sm btn-outline-primary">
+                            <a href="{{ ticket.documento_requisicao.url }}" download class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-download"></i> Baixar
                             </a>
                         </div>
@@ -81,7 +81,7 @@
                             <div class="text-truncate" style="max-width: 80%;">
                                 📄 {{ anexo.arquivo.name }}
                             </div>
-                            <a href="{% url 'tickets:download_anexo_ticket' anexo.id %}" class="btn btn-sm btn-outline-primary" target="_blank">
+                            <a href="{{ anexo.arquivo.url }}" class="btn btn-sm btn-outline-primary" target="_blank">
                                 <i class="bi bi-download"></i> Baixar
                             </a>
                         </li>

@@ -409,67 +409,13 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     return render(request, "tickets/fila_atendimento.html", context)
 
 @login_required(login_url="/login/")
-def download_documento_requisicao(request: HttpRequest, ticket_id: int) -> HttpResponse:
-    """
-    Gera uma URL pré-assinada para download do documento de requisição do ticket.
-    """
-    ticket = get_object_or_404(Ticket, pk=ticket_id)
-
-    # Reutiliza a mesma lógica de permissão
-    if not _usuario_tem_acesso_ticket(request.user, ticket):
-        messages.error(request, "Você não tem permissão para acessar este arquivo.")
-        return redirect("tickets:meus_tickets")
-
-    if not ticket.documento_requisicao:
-        messages.warning(request, "Este ticket não possui documento de requisição.")
-        return redirect("tickets:detalhe_ticket", pk=ticket.id)
-
-    try:
-        # Gera a URL pré-assinada e redireciona
-        url_segura_download = ticket.documento_requisicao.url
-        return redirect(url_segura_download)
-    except Exception as e:
-        logger.error(f"Erro ao gerar URL do Storage para documento do ticket {ticket_id}: {e}")
-        messages.error(request, "Erro ao tentar acessar o anexo no servidor de arquivos.")
-        return redirect("tickets:detalhe_ticket", pk=ticket.id)
-
-
-@login_required(login_url="/login/")
-def download_anexo_ticket(request: HttpRequest, anexo_id: uuid.UUID) -> HttpResponse:
-    """
-    Gera uma URL pré-assinada para download de um anexo de ticket (TicketAnexo).
-    """
-    anexo = get_object_or_404(TicketAnexo, pk=anexo_id)
-    ticket = anexo.ticket
-
-    # Reutiliza a mesma lógica de permissão
-    if not _usuario_tem_acesso_ticket(request.user, ticket):
-        messages.error(request, "Você não tem permissão para acessar este arquivo.")
-        return redirect("tickets:meus_tickets")
-
-    if not anexo.arquivo:
-        messages.warning(request, "Este anexo não possui arquivo.")
-        return redirect("tickets:detalhe_ticket", pk=ticket.id)
-
-    try:
-        # Gera a URL pré-assinada e redireciona
-        url_segura_download = anexo.arquivo.url
-        return redirect(url_segura_download)
-    except Exception as e:
-        logger.error(f"Erro ao gerar URL do Storage para anexo de ticket {anexo_id}: {e}")
-        messages.error(request, "Erro ao tentar acessar o anexo no servidor de arquivos.")
-        return redirect("tickets:detalhe_ticket", pk=ticket.id)
-
-@login_required(login_url="/login/")
 def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
     """
-    Gera uma URL pré-assinada (Pre-signed URL) e redireciona o cliente para 
-    baixar diretamente do Oracle Object Storage, aliviando a CPU da aplicação.
+    Gera uma URL segura e redireciona o cliente para baixar o anexo.
     """
     interacao = get_object_or_404(TicketInteracao, pk=interacao_id)
     ticket = interacao.ticket
 
-    # Segurança: Verifica se o usuário é o dono do ticket OU da equipe de suporte/liderança
     if not _usuario_tem_acesso_ticket(request.user, ticket):
         messages.error(request, "Você não tem permissão para acessar este arquivo.")
         return redirect("tickets:meus_tickets")
@@ -479,14 +425,18 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
     try:
-        # AQUI ESTÁ A MÁGICA DA NUVEM:
-        # O método .url não abre o arquivo, ele gera o link criptografado da Oracle.
-        url_segura_download = interacao.anexo.url
-        return redirect(url_segura_download)
+        arquivo = interacao.anexo.open('rb')
+        filename = os.path.basename(interacao.anexo.name)
+        return FileResponse(arquivo, as_attachment=True, filename=filename)
+
+    except FileNotFoundError:
+        logger.error(f"Tentativa de download falhou. Arquivo não encontrado no disco: {interacao.anexo.name}")
+        messages.error(request, "Arquivo indisponível, contate o suporte.")
+        return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
     except Exception as e:
-        logger.error(f"Erro ao gerar URL do Storage para interacao {interacao_id}: {e}")
-        messages.error(request, "Erro ao tentar acessar o anexo no servidor de arquivos.")
+        logger.error(f"Erro inesperado ao servir anexo da interação {interacao_id}: {e}")
+        messages.error(request, "Ocorreu um erro interno ao processar o download. Tente novamente mais tarde.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
 

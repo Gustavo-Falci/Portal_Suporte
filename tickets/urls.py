@@ -25,18 +25,8 @@ urlpatterns = [
     # Funcionalidades Auxiliares
     path(
         "interacao/anexo/<int:interacao_id>/",
-        views.download_anexo_interacao,
-        name="download_anexo_interacao",
-    ),
-    path(
-        "ticket/anexo/<uuid:anexo_id>/",
-        views.download_anexo_ticket,
-        name="download_anexo_ticket",
-    ),
-    path(
-        "ticket/<int:ticket_id>/documento/",
-        views.download_documento_requisicao,
-        name="download_documento_requisicao",
+        views.download_anexo,
+        name="download_anexo",
     ),
     path(
         "notificacao/ler/<int:notificacao_id>/",
