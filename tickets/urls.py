@@ -25,7 +25,7 @@ urlpatterns = [
     # Funcionalidades Auxiliares
     path(
         "interacao/anexo/<int:interacao_id>/",
-        views.download_anexo,
+        views.download_anexo_interacao,
         name="download_anexo",
     ),
     path(
