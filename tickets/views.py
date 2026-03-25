@@ -15,6 +15,7 @@ from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import SetPasswordForm
 from .forms import EmailAuthenticationForm
 import logging
+import uuid
 import os
 import threading
 
@@ -408,6 +409,58 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     return render(request, "tickets/fila_atendimento.html", context)
 
 @login_required(login_url="/login/")
+def download_documento_requisicao(request: HttpRequest, ticket_id: int) -> HttpResponse:
+    """
+    Gera uma URL pré-assinada para download do documento de requisição do ticket.
+    """
+    ticket = get_object_or_404(Ticket, pk=ticket_id)
+
+    # Reutiliza a mesma lógica de permissão
+    if not _usuario_tem_acesso_ticket(request.user, ticket):
+        messages.error(request, "Você não tem permissão para acessar este arquivo.")
+        return redirect("tickets:meus_tickets")
+
+    if not ticket.documento_requisicao:
+        messages.warning(request, "Este ticket não possui documento de requisição.")
+        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+
+    try:
+        # Gera a URL pré-assinada e redireciona
+        url_segura_download = ticket.documento_requisicao.url
+        return redirect(url_segura_download)
+    except Exception as e:
+        logger.error(f"Erro ao gerar URL do Storage para documento do ticket {ticket_id}: {e}")
+        messages.error(request, "Erro ao tentar acessar o anexo no servidor de arquivos.")
+        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+
+
+@login_required(login_url="/login/")
+def download_anexo_ticket(request: HttpRequest, anexo_id: uuid.UUID) -> HttpResponse:
+    """
+    Gera uma URL pré-assinada para download de um anexo de ticket (TicketAnexo).
+    """
+    anexo = get_object_or_404(TicketAnexo, pk=anexo_id)
+    ticket = anexo.ticket
+
+    # Reutiliza a mesma lógica de permissão
+    if not _usuario_tem_acesso_ticket(request.user, ticket):
+        messages.error(request, "Você não tem permissão para acessar este arquivo.")
+        return redirect("tickets:meus_tickets")
+
+    if not anexo.arquivo:
+        messages.warning(request, "Este anexo não possui arquivo.")
+        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+
+    try:
+        # Gera a URL pré-assinada e redireciona
+        url_segura_download = anexo.arquivo.url
+        return redirect(url_segura_download)
+    except Exception as e:
+        logger.error(f"Erro ao gerar URL do Storage para anexo de ticket {anexo_id}: {e}")
+        messages.error(request, "Erro ao tentar acessar o anexo no servidor de arquivos.")
+        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+
+@login_required(login_url="/login/")
 def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
     """
     Gera uma URL pré-assinada (Pre-signed URL) e redireciona o cliente para 
@@ -433,7 +486,7 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
 
     except Exception as e:
         logger.error(f"Erro ao gerar URL do Storage para interacao {interacao_id}: {e}")
-        messages.error(request, "Erro ao tentar acessar o anexo no servidor nas nuvens.")
+        messages.error(request, "Erro ao tentar acessar o anexo no servidor de arquivos.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
 

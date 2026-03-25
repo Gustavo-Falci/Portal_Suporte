@@ -41,8 +41,9 @@
             {% if interacao.anexo %}
                 <div class="mt-2 pt-2 border-top">
                     <small>
-                        <a href="{% url 'tickets:download_anexo' interacao.id %}" 
+                        <a href="{% url 'tickets:download_anexo_interacao' interacao.id %}"
                            class="text-decoration-none d-flex align-items-center" 
+                           target="_blank"
                            title="{{ interacao.filename }}"> 
                             
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-paperclip me-1" viewBox="0 0 16 16">
@@ -50,11 +51,7 @@
                             </svg>
                             
                             <span class="text-truncate" style="max-width: 200px; display: inline-block; vertical-align: bottom;">
-                                {% if interacao.filename %}
-                                    {{ interacao.filename }}
-                                {% else %}
-                                    {{ interacao.anexo.name|cut:"tickets/temp/"|cut:"chat/"|slice:"-25:" }}
-                                {% endif %}
+                                {{ interacao.filename_short }}
                             </span>
                         </a>
                     </small>
