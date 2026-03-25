@@ -407,47 +407,33 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     
     return render(request, "tickets/fila_atendimento.html", context)
 
-
 @login_required(login_url="/login/")
 def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
     """
-    Serve o anexo de forma segura e trata erros caso o arquivo não exista.
+    Gera uma URL pré-assinada (Pre-signed URL) e redireciona o cliente para 
+    baixar diretamente do Oracle Object Storage, aliviando a CPU da aplicação.
     """
-    # 1. Busca a interação ou retorna 404 se o ID não existir no banco
     interacao = get_object_or_404(TicketInteracao, pk=interacao_id)
     ticket = interacao.ticket
 
-    # 2. Segurança Unificada
+    # Segurança: Verifica se o usuário é o dono do ticket OU da equipe de suporte/liderança
     if not _usuario_tem_acesso_ticket(request.user, ticket):
         messages.error(request, "Você não tem permissão para acessar este arquivo.")
         return redirect("tickets:meus_tickets")
 
-    # 3. Verifica se o campo anexo está preenchido
     if not interacao.anexo:
         messages.warning(request, "Esta interação não possui anexo.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
     try:
-        # 4. Tenta abrir o arquivo em modo binário de leitura ('rb')
-        # Isso é fundamental para PDFs, Imagens e ZIPs não corromperem
-        arquivo = interacao.anexo.open('rb')
-
-        # Opcional: Definir o nome do arquivo no download
-        filename = os.path.basename(interacao.anexo.name)
-
-        # Retorna o arquivo como download (as_attachment=True)
-        return FileResponse(arquivo, as_attachment=True, filename=filename)
-
-    except FileNotFoundError:
-        # 5. Tratamento de Erro: Arquivo consta no banco, mas não no disco
-        logger.error(f"Tentativa de download falhou. Arquivo não encontrado no disco: {interacao.anexo.name}")
-        messages.error(request, "Arquivo indisponível, contate o suporte.")
-        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+        # AQUI ESTÁ A MÁGICA DA NUVEM:
+        # O método .url não abre o arquivo, ele gera o link criptografado da Oracle.
+        url_segura_download = interacao.anexo.url
+        return redirect(url_segura_download)
 
     except Exception as e:
-        # 6. Erro genérico (ex: permissão de leitura no disco, erro de IO)
-        logger.error(f"Erro inesperado ao servir anexo da interação {interacao_id}: {e}")
-        messages.error(request, "Ocorreu um erro interno ao processar o download. Tente novamente mais tarde.")
+        logger.error(f"Erro ao gerar URL do Storage para interacao {interacao_id}: {e}")
+        messages.error(request, "Erro ao tentar acessar o anexo no servidor nas nuvens.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
 
