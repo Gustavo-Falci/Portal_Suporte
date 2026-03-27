@@ -14,6 +14,7 @@ from django.core.paginator import Paginator
 from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import SetPasswordForm
 from .forms import EmailAuthenticationForm
+from django.conf import settings
 import logging
 import uuid
 import os
