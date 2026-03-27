@@ -412,6 +412,7 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
 def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
     """
     Gera uma URL segura e redireciona o cliente para baixar o anexo.
+    Suporta tanto o armazenamento local quanto a nuvem (Oracle/S3).
     """
     interacao = get_object_or_404(TicketInteracao, pk=interacao_id)
     ticket = interacao.ticket
@@ -425,9 +426,16 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
     try:
-        arquivo = interacao.anexo.open('rb')
-        filename = os.path.basename(interacao.anexo.name)
-        return FileResponse(arquivo, as_attachment=True, filename=filename)
+        # Verifica se estamos usando o bucket do Oracle (S3) configurado no settings
+        if getattr(settings, 'USE_S3', False):
+            # No backend S3, .url gera o link temporário (Pre-signed URL) e redireciona o usuário para lá
+            url_assinada = interacao.anexo.url
+            return redirect(url_assinada)
+        else:
+            # Comportamento original: serve o arquivo do disco local
+            arquivo = interacao.anexo.open('rb')
+            filename = os.path.basename(interacao.anexo.name)
+            return FileResponse(arquivo, as_attachment=True, filename=filename)
 
     except FileNotFoundError:
         logger.error(f"Tentativa de download falhou. Arquivo não encontrado no disco: {interacao.anexo.name}")
