@@ -77,6 +77,7 @@ class Command(BaseCommand):
                         Bucket=bucket,
                         Key=s3_key
                     )
+                    os.remove(local_path)
                     self.stdout.write(self.style.SUCCESS("✅ OK"))
                     arquivos_enviados += 1
                 except Exception as e:

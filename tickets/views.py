@@ -412,8 +412,7 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
 @login_required(login_url="/login/")
 def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
     """
-    Gera uma URL segura e redireciona o cliente para baixar o anexo.
-    Suporta tanto o armazenamento local quanto a nuvem (Oracle/S3).
+    Gera uma URL segura ou serve o arquivo físico caso o sistema esteja em Fallback de erro.
     """
     interacao = get_object_or_404(TicketInteracao, pk=interacao_id)
     ticket = interacao.ticket
@@ -427,25 +426,30 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
     try:
-        # Verifica se estamos usando o bucket do Oracle (S3) configurado no settings
         if getattr(settings, 'USE_S3', False):
-            # No backend S3, .url gera o link temporário (Pre-signed URL) e redireciona o usuário para lá
-            url_assinada = interacao.anexo.url
-            return redirect(url_assinada)
+            # O sistema pergunta ao Storage se o arquivo caiu no disco local por falha da nuvem
+            if hasattr(interacao.anexo.storage, 'is_local') and interacao.anexo.storage.is_local(interacao.anexo.name):
+                arquivo = interacao.anexo.open('rb')
+                filename = os.path.basename(interacao.anexo.name)
+                return FileResponse(arquivo, as_attachment=True, filename=filename)
+            else:
+                # O arquivo está são e salvo na Oracle Cloud
+                url_assinada = interacao.anexo.url
+                return redirect(url_assinada)
         else:
-            # Comportamento original: serve o arquivo do disco local
+            # Comportamento padrão 100% offline
             arquivo = interacao.anexo.open('rb')
             filename = os.path.basename(interacao.anexo.name)
             return FileResponse(arquivo, as_attachment=True, filename=filename)
 
     except FileNotFoundError:
-        logger.error(f"Tentativa de download falhou. Arquivo não encontrado no disco: {interacao.anexo.name}")
+        logger.error(f"Arquivo não encontrado no disco: {interacao.anexo.name}")
         messages.error(request, "Arquivo indisponível, contate o suporte.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
     except Exception as e:
         logger.error(f"Erro inesperado ao servir anexo da interação {interacao_id}: {e}")
-        messages.error(request, "Ocorreu um erro interno ao processar o download. Tente novamente mais tarde.")
+        messages.error(request, "Ocorreu um erro interno ao processar o download.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
 
