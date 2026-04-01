@@ -166,7 +166,11 @@ class NotificationService:
             link=reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk}),
         )
 
-        # 2. Envio de E-mail
+        # 2. Preparar e Envio de E-mail
+        link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
+        base_url = getattr(settings, "SITE_URL", "http://localhost:8000").rstrip("/")
+        full_link = f"{base_url}{link_relativo}"
+        
         assunto = f"[Atualização] Ticket #{ticket.maximo_id} mudou para {status_novo}"
 
         corpo = f"""
@@ -179,7 +183,7 @@ class NotificationService:
             <p><strong>Para:</strong> <span style="color: #0f62fe; font-weight: bold;">{status_novo}</span></p>
         </div>
         <br>
-        Acesse o portal para ver detalhes.
+        <a href="{full_link}">Clique aqui para acessar o portal e ver os detalhes.</a>
         """
 
         cls._enviar_email_generico([ticket.cliente.email], assunto, corpo)
