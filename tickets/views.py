@@ -164,12 +164,18 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                 for anexo_obj in ticket.anexos.all():
                     todos_anexos.append(anexo_obj.arquivo)
 
-                # 3. Envio de E-mail
+                # 3. Envio de E-mail ao Suporte (Maximo Listener)
                 try:
                     MaximoEmailService.enviar_ticket_maximo(ticket, request.user, todos_anexos)
+                    messages.success(request, f"Ticket #{ticket.id} aberto com sucesso!")
 
                 except Exception as e:
                     logger.error(f"Erro no envio de e-mail (Ticket {ticket.id}): {e}")
+                    messages.warning(
+                        request, 
+                        "O ticket foi guardado no portal, mas houve um erro ao enviar a notificação para a nossa equipe de suporte. "
+                        "Por favor, entre em contato via telefone ou chat para confirmar a receção."
+                    )
 
                 return redirect("tickets:ticket_sucesso")
 

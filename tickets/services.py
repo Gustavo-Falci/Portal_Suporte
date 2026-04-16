@@ -105,13 +105,13 @@ class MaximoEmailService:
 
         try:
             email.send()
+            logger.info(f"E-mail de abertura enviado com sucesso para {destinatario} (Ticket {ticket.id})")
 
         except Exception as e:
             logger.error(
-                f"Erro crítico ao enviar e-mail para Maximo (Ticket {ticket.id}): {e}"
+                f"Erro crítico ao enviar e-mail para Maximo (Ticket {ticket.id}) [TO: {destinatario}]: {e}"
             )
-            # Opcional: Levantar exceção se quiser que a View trate o erro visualmente
-            # raise e
+            raise e
 
 
 class NotificationService:
