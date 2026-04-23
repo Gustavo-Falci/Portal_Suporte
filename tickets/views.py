@@ -15,8 +15,9 @@ from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import SetPasswordForm
 from .forms import EmailAuthenticationForm
 from django.conf import settings
+from django.http import Http404
+from typing import Any
 import logging
-import uuid
 import os
 import threading
 
@@ -460,15 +461,27 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
 
 
 @login_required
-def marcar_notificacao_lida(request, notificacao_id):
-    notificacao = get_object_or_404(
-        Notificacao, pk=notificacao_id, destinatario=request.user
-    )
+def marcar_notificacao_lida(request: Any, notificacao_id: int) -> Any:
+    """
+    Versão Sênior: Processa a leitura de notificações garantindo acesso 
+    para a equipe de suporte/liderança mesmo em notificações de terceiros.
+    """
 
-    notificacao.lida = True
-    notificacao.save()
+    notificacao = get_object_or_404(Notificacao, pk=notificacao_id)
 
-    if notificacao.link:
+    pode_acessar = (notificacao.destinatario == request.user) or request.user.is_staff
+
+    if not pode_acessar:
+        raise Http404("Notificação não encontrada ou acesso negado.")
+
+    if notificacao.destinatario == request.user and not notificacao.lida:
+        notificacao.lida = True
+        notificacao.save()
+
+    if notificacao.ticket:
+        return redirect("tickets:detalhe_ticket", pk=notificacao.ticket.pk)
+    
+    if hasattr(notificacao, 'link') and notificacao.link:
         return redirect(notificacao.link)
     
     return redirect("tickets:pagina_inicial")
