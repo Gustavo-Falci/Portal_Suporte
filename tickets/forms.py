@@ -173,7 +173,7 @@ class TicketForm(forms.ModelForm):
         if not user:
             return
 
-        is_iot = user.groups.filter(name="IoT_Cliente").exists()
+        is_iot = user.is_iot_cliente
 
         if is_iot:
             self._configurar_modo_iot(user)
