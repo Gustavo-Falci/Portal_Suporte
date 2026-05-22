@@ -145,3 +145,49 @@ class CriarTicketContextoIsIotTest(TestCase):
         self.client_http.force_login(self.user_ti)
         resp = self.client_http.get(reverse("tickets:criar_ticket"))
         self.assertFalse(resp.context["is_iot"])
+
+
+class FilaAtendimentoIoTSuporteTest(TestCase):
+    def setUp(self):
+        self.client_http = Client()
+        Group.objects.get_or_create(name="IoT_Cliente")
+        Group.objects.get_or_create(name="IoT_Suporte")
+
+        self.suporte_iot = Cliente.objects.create_user(
+            username="siot@test.com", email="siot@test.com", password="x"
+        )
+        self.suporte_iot.groups.add(Group.objects.get(name="IoT_Suporte"))
+
+        self.cliente_iot = Cliente.objects.create_user(
+            username="ciot@test.com", email="ciot@test.com", password="x"
+        )
+        self.cliente_iot.groups.add(Group.objects.get(name="IoT_Cliente"))
+
+        self.cliente_ti = Cliente.objects.create_user(
+            username="cti@test.com", email="cti@test.com", password="x"
+        )
+
+        self.ticket_iot = Ticket.objects.create(
+            cliente=self.cliente_iot, sumario="iot tkt", descricao="x",
+            prioridade="3", maximo_id="SR-1",
+        )
+        self.ticket_ti = Ticket.objects.create(
+            cliente=self.cliente_ti, sumario="ti tkt", descricao="x",
+            prioridade="3", maximo_id="SR-2",
+        )
+
+    def test_iot_suporte_ve_apenas_tickets_iot_na_fila(self):
+        self.client_http.force_login(self.suporte_iot)
+        resp = self.client_http.get(reverse("tickets:fila_atendimento"))
+        self.assertEqual(resp.status_code, 200)
+        tickets_na_pagina = list(resp.context["tickets"])
+        self.assertIn(self.ticket_iot, tickets_na_pagina)
+        self.assertNotIn(self.ticket_ti, tickets_na_pagina)
+
+    def test_iot_suporte_ve_apenas_tickets_iot_na_home(self):
+        self.client_http.force_login(self.suporte_iot)
+        resp = self.client_http.get(reverse("tickets:pagina_inicial"))
+        self.assertEqual(resp.status_code, 200)
+        ultimos = list(resp.context["ultimos_tickets"])
+        self.assertIn(self.ticket_iot, ultimos)
+        self.assertNotIn(self.ticket_ti, ultimos)

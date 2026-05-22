@@ -53,13 +53,20 @@ def pagina_inicial(request: HttpRequest) -> HttpResponse:
         return redirect("tickets:login")
 
     user = request.user
-    
+    is_iot_suporte = user.is_iot_suporte
+
     # 1. QuerySet Base
     if user.is_support_team or user.is_lider_suporte:
         qs_tickets = Ticket.objects.exclude(maximo_id__isnull=True)
+    elif is_iot_suporte:
+        qs_tickets = Ticket.objects.exclude(maximo_id__isnull=True).filter(
+            cliente__groups__name="IoT_Cliente"
+        )
     elif user.is_consultor:
         if user.person_id:
-            qs_tickets = Ticket.objects.exclude(maximo_id__isnull=True).filter(owner__iexact=user.person_id)
+            qs_tickets = Ticket.objects.exclude(maximo_id__isnull=True).filter(
+                owner__iexact=user.person_id
+            )
         else:
             qs_tickets = Ticket.objects.none()
     else:
@@ -323,31 +330,28 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     
     # 1. Identificação de Perfil
     is_consultor = request.user.groups.filter(name="Consultores").exists()
-    
-    # Verifica se o usuário é do grupo 'lider_suporte'
     is_lider = request.user.groups.filter(name="lider_suporte").exists()
-    
-    # Verifica se é equipe de suporte (Staff/Admin)
+    is_iot_suporte = request.user.is_iot_suporte
     is_support = getattr(request.user, 'is_support_team', False) or request.user.is_superuser
 
-    # 2. Segurança: Acesso permitido para Suporte, Líderes ou Consultores
-    if not is_support and not is_consultor and not is_lider:
+    # 2. Segurança: Acesso permitido para Suporte, Líderes, Consultores ou IoT_Suporte
+    if not is_support and not is_consultor and not is_lider and not is_iot_suporte:
         messages.warning(request, "Acesso restrito.")
         return redirect("tickets:meus_tickets")
 
     # 3. Base da Query
     tickets = (
         Ticket.objects.exclude(maximo_id__isnull=True)
-        .select_related("cliente", "ambiente")
+        .select_related("cliente", "ambiente", "local", "equipamento")
         .order_by("-data_criacao")
     )
 
-    # LÓGICA DE VISIBILIDADE 
-    if is_consultor and not is_support and not is_lider:
-
+    # LÓGICA DE VISIBILIDADE
+    if is_iot_suporte and not is_support and not is_lider:
+        tickets = tickets.filter(cliente__groups__name="IoT_Cliente")
+    elif is_consultor and not is_support and not is_lider:
         if request.user.person_id:
             tickets = tickets.filter(owner__iexact=request.user.person_id)
-
         else:
             tickets = Ticket.objects.none()
             messages.warning(request, "Seu usuário não possui um ID Maximo configurado.")
