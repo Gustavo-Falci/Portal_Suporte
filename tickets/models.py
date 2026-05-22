@@ -94,6 +94,14 @@ class Cliente(AbstractUser):
     def is_lider_suporte(self):
         return self.groups.filter(name="lider_suporte").exists()
 
+    @property
+    def is_iot_cliente(self):
+        return self.groups.filter(name="IoT_Cliente").exists()
+
+    @property
+    def is_iot_suporte(self):
+        return self.groups.filter(name="IoT_Suporte").exists()
+
 
 class Ambiente(models.Model):
 
@@ -135,6 +143,24 @@ class Ticket(models.Model):
     )
 
     area = models.ForeignKey(Area, on_delete=models.SET_NULL, null=True, blank=True)
+
+    local = models.ForeignKey(
+        "Local",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tickets",
+        verbose_name="Local Afetado",
+    )
+
+    equipamento = models.ForeignKey(
+        "Equipamento",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tickets",
+        verbose_name="Equipamento Afetado",
+    )
 
     # Dados do Chamado
     sumario = models.CharField(max_length=100, verbose_name="Resumo do Problema")
@@ -360,3 +386,43 @@ class Notificacao(models.Model):
 
     def __str__(self):
         return f"{self.titulo} - {self.destinatario}"
+
+
+class Local(models.Model):
+    clientes = models.ManyToManyField(
+        Cliente,
+        related_name="locais",
+        verbose_name="Clientes com acesso"
+    )
+    nome_local = models.CharField(max_length=100)
+    numero_ativo = models.CharField(max_length=20)
+
+    class Meta:
+        db_table = "locais"
+        verbose_name = "Local"
+        verbose_name_plural = "Locais"
+        ordering = ["nome_local"]
+
+    def __str__(self):
+        return f"{self.nome_local} ({self.numero_ativo})"
+
+
+class Equipamento(models.Model):
+    local = models.ForeignKey(
+        Local,
+        on_delete=models.CASCADE,
+        related_name="equipamentos",
+        verbose_name="Local"
+    )
+    nome_equipamento = models.CharField(max_length=100)
+    numero_ativo = models.CharField(max_length=20)
+
+    class Meta:
+        db_table = "equipamentos"
+        verbose_name = "Equipamento"
+        verbose_name_plural = "Equipamentos"
+        ordering = ["nome_equipamento"]
+        indexes = [models.Index(fields=["local"])]
+
+    def __str__(self):
+        return f"{self.nome_equipamento} ({self.numero_ativo})"
