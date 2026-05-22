@@ -2,6 +2,7 @@ import logging
 import json
 import requests
 import os
+from abc import ABC, abstractmethod
 from django.core.mail import EmailMessage
 from django.conf import settings
 from .models import Ticket, TicketInteracao, Cliente, Notificacao
@@ -12,25 +13,38 @@ from django.utils.html import strip_tags
 logger = logging.getLogger(__name__)
 
 
-class MaximoEmailService:
+class MaximoStrategyBase(ABC):
+    """Contrato para geração de payload Maximo e roteamento de email."""
 
-    @staticmethod
-    def gerar_corpo_maximo(ticket: Ticket, usuario: Cliente) -> str:
+    @abstractmethod
+    def gerar_corpo(self, ticket: "Ticket", usuario: "Cliente") -> str: ...
 
-        """
-        Gera o corpo técnico exigido pelo Maximo Listener.
-        """
+    @abstractmethod
+    def destinatario(self) -> str: ...
 
+    @abstractmethod
+    def assunto(self, ticket: "Ticket") -> str: ...
+
+
+class TIMaximoStrategy(MaximoStrategyBase):
+    """Payload do fluxo TI corporativo — SITEID=ITCBR, usa Ambiente + Area."""
+
+    def destinatario(self) -> str:
+        return settings.EMAIL_DESTINATION
+
+    def assunto(self, ticket: "Ticket") -> str:
+        return f"Novo Ticket - {ticket.sumario}"
+
+    def gerar_corpo(self, ticket: "Ticket", usuario: "Cliente") -> str:
         descricao_limpa = strip_tags(ticket.descricao).replace('\n', '<br>')
         sumario_limpo = strip_tags(ticket.sumario)
-        prioridade = ticket.prioridade
         asset_num = ticket.ambiente.numero_ativo if ticket.ambiente else ""
 
         corpo = f"Descrição do problema: {descricao_limpa}<br><br>"
         corpo += "#MAXIMO_EMAIL_BEGIN<br>"
         corpo += f"SR#DESCRIPTION={sumario_limpo}<br>;<br>"
         corpo += f"SR#ASSETNUM={asset_num}<br>;<br>"
-        corpo += f"SR#REPORTEDPRIORITY={prioridade}<br>;<br>"
+        corpo += f"SR#REPORTEDPRIORITY={ticket.prioridade}<br>;<br>"
 
         if ticket.area:
             corpo += f"SR#ITC_AREA={ticket.area.nome_area}<br>;<br>"
@@ -43,35 +57,78 @@ class MaximoEmailService:
         if person_id:
             corpo += f"SR#AFFECTEDPERSONID={person_id}<br>;<br>"
 
-        corpo += """
-        SR#SITEID=ITCBR<br>;<br>
-        LSNRACTION=CREATE<br>;<br>
-        LSNRAPPLIESTO=SR<br>;<br>
-        SR#CLASS=SR<br>;<br>
-        SR#TICKETID=&AUTOKEY&<br>;<br>
-        #MAXIMO_EMAIL_END<br><br>
-        """
+        corpo += (
+            "SR#SITEID=ITCBR<br>;<br>"
+            "LSNRACTION=CREATE<br>;<br>"
+            "LSNRAPPLIESTO=SR<br>;<br>"
+            "SR#CLASS=SR<br>;<br>"
+            "SR#TICKETID=&AUTOKEY&<br>;<br>"
+            "#MAXIMO_EMAIL_END<br><br>"
+        )
         return corpo
+
+
+class IoTMaximoStrategy(MaximoStrategyBase):
+    """Payload do fluxo IoT — SITEID=ITCIOT, usa Local + Equipamento."""
+
+    def destinatario(self) -> str:
+        return settings.EMAIL_DESTINATION
+
+    def assunto(self, ticket: "Ticket") -> str:
+        return f"Novo Ticket IoT - {ticket.sumario}"
+
+    def gerar_corpo(self, ticket: "Ticket", usuario: "Cliente") -> str:
+        descricao_limpa = strip_tags(ticket.descricao).replace('\n', '<br>')
+        sumario_limpo = strip_tags(ticket.sumario)
+
+        asset_num = ticket.equipamento.numero_ativo if ticket.equipamento else ""
+        local_num = ticket.local.numero_ativo if ticket.local else ""
+
+        corpo = f"Descrição do problema: {descricao_limpa}<br><br>"
+        corpo += "#MAXIMO_EMAIL_BEGIN<br>"
+        corpo += f"SR#DESCRIPTION={sumario_limpo}<br>;<br>"
+        corpo += f"SR#ASSETNUM={asset_num}<br>;<br>"
+        corpo += f"SR#REPORTEDPRIORITY={ticket.prioridade}<br>;<br>"
+
+        if local_num:
+            corpo += f"SR#LOCATION={local_num}<br>;<br>"
+
+        person_id = getattr(usuario, "person_id", None)
+        if person_id:
+            corpo += f"SR#AFFECTEDPERSONID={person_id}<br>;<br>"
+
+        corpo += (
+            "SR#SITEID=ITCIOT<br>;<br>"
+            "LSNRACTION=CREATE<br>;<br>"
+            "LSNRAPPLIESTO=SR<br>;<br>"
+            "SR#CLASS=SR<br>;<br>"
+            "SR#TICKETID=&AUTOKEY&<br>;<br>"
+            "#MAXIMO_EMAIL_END<br><br>"
+        )
+        return corpo
+
+
+class MaximoEmailService:
+    """Despachante que escolhe a strategy conforme grupo do usuário."""
+
+    @staticmethod
+    def _get_strategy(usuario: "Cliente") -> MaximoStrategyBase:
+        if usuario.groups.filter(name="IoT_Cliente").exists():
+            return IoTMaximoStrategy()
+        return TIMaximoStrategy()
 
     @classmethod
     def enviar_ticket_maximo(
-        cls, ticket: Ticket, usuario: Cliente, arquivos_upload: list | None = None
+        cls, ticket: "Ticket", usuario: "Cliente", arquivos_upload: list | None = None
     ):
-        
-        """
-        Orquestra o envio do e-mail de abertura para o Maximo.
-        Agora suporta uma lista de múltiplos anexos.
-        """
-
-        destinatario = settings.EMAIL_DESTINATION
-        remetente = settings.DEFAULT_FROM_EMAIL
-
-        corpo_email = cls.gerar_corpo_maximo(ticket, usuario)
+        strategy = cls._get_strategy(usuario)
+        destinatario = strategy.destinatario()
+        corpo_email = strategy.gerar_corpo(ticket, usuario)
 
         email = EmailMessage(
-            subject=f"Novo Ticket - {ticket.sumario}",
+            subject=strategy.assunto(ticket),
             body=corpo_email,
-            from_email=remetente,
+            from_email=settings.DEFAULT_FROM_EMAIL,
             to=[destinatario],
             reply_to=[usuario.email],
         )
@@ -80,36 +137,29 @@ class MaximoEmailService:
         if arquivos_upload:
             for arquivo in arquivos_upload:
                 try:
-                    # 1. Abre o arquivo salvo fisicamente em modo de leitura binária ('rb')
                     arquivo.open('rb')
                     arquivo.seek(0)
-                    
-                    # 2. Pega apenas o nome do arquivo final, ignorando o caminho da pasta
-                    # (Ex: em vez de 'tickets/2026/arquivo.docx', fica só 'arquivo.docx')
                     nome = os.path.basename(arquivo.name)
-                    
-                    # 3. Lê os bytes do arquivo
                     conteudo = arquivo.read()
-                    
-                    # 4. Anexa ao e-mail (O próprio Django infere o content_type pelo nome do arquivo)
                     email.attach(nome, conteudo)
-                    
                 except Exception as e:
-                    logger.error(f"Erro ao anexar arquivo '{getattr(arquivo, 'name', '?')}' no service: {e}")
-                
+                    logger.error(
+                        f"Erro ao anexar arquivo '{getattr(arquivo, 'name', '?')}' no service: {e}"
+                    )
                 finally:
-
-                    # 5. Segurança: Fecha o arquivo para liberar memória do servidor
                     if hasattr(arquivo, 'closed') and not arquivo.closed:
                         arquivo.close()
 
         try:
             email.send()
-            logger.info(f"E-mail de abertura enviado com sucesso para {destinatario} (Ticket {ticket.id})")
-
+            logger.info(
+                f"E-mail enviado [{strategy.__class__.__name__}] "
+                f"destinatário={destinatario} ticket={ticket.id}"
+            )
         except Exception as e:
             logger.error(
-                f"Erro crítico ao enviar e-mail para Maximo (Ticket {ticket.id}) [TO: {destinatario}]: {e}"
+                f"Erro crítico ao enviar e-mail para Maximo (Ticket {ticket.id}) "
+                f"[TO: {destinatario}]: {e}"
             )
             raise e
 
