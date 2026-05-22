@@ -188,19 +188,32 @@
                             <strong>Aberto em:</strong><br>
                             {{ ticket.data_criacao|date:"d/m/Y H:i" }}
                         </li>
-                        <li class="mb-2">
-                            <strong>Ambiente:</strong><br>
-                            {{ ticket.ambiente.nome_ambiente }}
-                        </li>
-
-                        {% with user_lower=request.user.username|lower %}
-                            {% if ticket.area and request.user.is_support_team or ticket.area and "pampa" in user_lower or ticket.area and "abl" in user_lower %}
+                        {% if ticket.local %}
+                            <li class="mb-2">
+                                <strong>Local:</strong><br>
+                                {{ ticket.local.nome_local }}
+                            </li>
+                            {% if ticket.equipamento %}
                                 <li class="mb-2">
-                                    <strong>Área:</strong><br>
-                                    {{ ticket.area }}
+                                    <strong>Equipamento:</strong><br>
+                                    {{ ticket.equipamento.nome_equipamento }}
                                 </li>
                             {% endif %}
-                        {% endwith %}
+                        {% else %}
+                            <li class="mb-2">
+                                <strong>Ambiente:</strong><br>
+                                {{ ticket.ambiente.nome_ambiente }}
+                            </li>
+
+                            {% with user_lower=request.user.username|lower %}
+                                {% if ticket.area and request.user.is_support_team or ticket.area and "pampa" in user_lower or ticket.area and "abl" in user_lower %}
+                                    <li class="mb-2">
+                                        <strong>Área:</strong><br>
+                                        {{ ticket.area }}
+                                    </li>
+                                {% endif %}
+                            {% endwith %}
+                        {% endif %}
 
                         <li class="mb-0">
                             <strong>Prioridade:</strong><br>
