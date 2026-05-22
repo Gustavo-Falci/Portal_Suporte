@@ -206,28 +206,45 @@ class NotificationService:
 
         status_novo = ticket.get_status_maximo_display()
 
-        # 1. Notificação Interna (Sino)
+        # 1. Notificação Interna (Sino) — Cliente sempre
+        link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
         Notificacao.objects.create(
             destinatario=ticket.cliente,
             ticket=ticket,
             titulo="Status Atualizado",
             tipo="status",
             mensagem=f"O chamado agora está: {status_novo}",
-            link=reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk}),
+            link=link_relativo,
         )
 
+        # 1.2 Notificação Interna pro time IoT_Suporte quando ticket é IoT
+        if ticket.cliente.is_iot_cliente:
+            iot_team = Cliente.objects.filter(groups__name="IoT_Suporte")
+            notifs_iot = [
+                Notificacao(
+                    destinatario=membro,
+                    ticket=ticket,
+                    titulo="Status Atualizado",
+                    tipo="status",
+                    mensagem=f"O chamado agora está: {status_novo}",
+                    link=link_relativo,
+                )
+                for membro in iot_team
+            ]
+            if notifs_iot:
+                Notificacao.objects.bulk_create(notifs_iot)
+
         # 2. Preparar e Envio de E-mail
-        link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
         base_url = getattr(settings, "SITE_URL", "http://localhost:8000").rstrip("/")
         full_link = f"{base_url}{link_relativo}"
-        
+
         assunto = f"[Atualização] Ticket #{ticket.maximo_id} mudou para {status_novo}"
 
         corpo = f"""
         Olá, {ticket.cliente.first_name or ticket.cliente.username}.<br><br>
-        
+
         O status do seu chamado <strong>#{ticket.maximo_id}</strong> foi atualizado.<br><br>
-        
+
         <div style="border: 1px solid #ccc; padding: 15px; background-color: #f4f4f4;">
             <p><strong>De:</strong> <span style="color: #666;">{status_anterior_display}</span></p>
             <p><strong>Para:</strong> <span style="color: #0f62fe; font-weight: bold;">{status_novo}</span></p>
@@ -236,7 +253,18 @@ class NotificationService:
         <a href="{full_link}">Clique aqui para acessar o portal e ver os detalhes.</a>
         """
 
-        cls._enviar_email_generico([ticket.cliente.email], assunto, corpo)
+        destinatarios_emails = [ticket.cliente.email]
+
+        # Inclui time IoT_Suporte quando ticket é de cliente IoT
+        if ticket.cliente.is_iot_cliente:
+            iot_team_emails = list(
+                Cliente.objects.filter(groups__name="IoT_Suporte")
+                .exclude(email="")
+                .values_list("email", flat=True)
+            )
+            destinatarios_emails.extend(iot_team_emails)
+
+        cls._enviar_email_generico(destinatarios_emails, assunto, corpo)
 
     @classmethod
     def notificar_nova_interacao(cls, ticket: Ticket, interacao: TicketInteracao):
@@ -272,6 +300,13 @@ class NotificationService:
             for lider in lideres:
                 if lider.email:
                     destinatarios.add(lider)
+
+            # C.2 Adiciona time IoT_Suporte quando ticket é de cliente IoT
+            if ticket.cliente.is_iot_cliente:
+                iot_team = Cliente.objects.filter(groups__name="IoT_Suporte")
+                for membro in iot_team:
+                    if membro.email:
+                        destinatarios.add(membro)
 
             # D. Remove o Autor da Mensagem (quem mandou não deve receber notificação)
             if interacao.autor in destinatarios:
