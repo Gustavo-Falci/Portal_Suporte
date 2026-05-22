@@ -417,12 +417,23 @@
                         return;
                     }
 
-                    let html = '<option value="" disabled selected>Selecione...</option>';
+                    equipSelect.innerHTML = '';
+                    const placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.disabled = true;
+                    placeholder.selected = true;
+                    placeholder.textContent = 'Selecione...';
+                    equipSelect.appendChild(placeholder);
+
                     data.equipamentos.forEach(function(eq) {
-                        const sel = (String(eq.id) === String(preservar)) ? ' selected' : '';
-                        html += '<option value="' + eq.id + '"' + sel + '>' + eq.label + '</option>';
+                        const opt = document.createElement('option');
+                        opt.value = eq.id;
+                        opt.textContent = eq.label;
+                        if (String(eq.id) === String(preservar)) {
+                            opt.selected = true;
+                        }
+                        equipSelect.appendChild(opt);
                     });
-                    equipSelect.innerHTML = html;
                     equipSelect.disabled = false;
                 } catch (err) {
                     console.error('Erro ao carregar equipamentos:', err);
