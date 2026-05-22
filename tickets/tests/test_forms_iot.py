@@ -16,9 +16,9 @@ class TicketFormIoTModeTest(TestCase):
         grupo_iot, _ = Group.objects.get_or_create(name="IoT_Cliente")
         self.iot_cliente.groups.add(grupo_iot)
 
-        self.local_a = Local.objects.create(nome_local="Fábrica SP", numero_ativo="LOC-A")
+        self.local_a = Local.objects.create(nome_local="Fábrica SP")
         self.local_a.clientes.add(self.iot_cliente)
-        self.local_b = Local.objects.create(nome_local="Fábrica RJ", numero_ativo="LOC-B")
+        self.local_b = Local.objects.create(nome_local="Fábrica RJ")
 
         self.eq_a = Equipamento.objects.create(
             local=self.local_a, nome_equipamento="Sensor", numero_ativo="EQ-A"

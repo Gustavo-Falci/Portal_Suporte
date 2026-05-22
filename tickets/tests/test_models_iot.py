@@ -14,19 +14,19 @@ class LocalModelTest(TestCase):
         )
 
     def test_cria_local_com_cliente_m2m(self):
-        local = Local.objects.create(nome_local="Fábrica SP", numero_ativo="LOC-001")
+        local = Local.objects.create(nome_local="Fábrica SP")
         local.clientes.add(self.cliente)
         self.assertEqual(local.clientes.count(), 1)
         self.assertEqual(self.cliente.locais.count(), 1)
 
     def test_str_local(self):
-        local = Local.objects.create(nome_local="Fábrica SP", numero_ativo="LOC-001")
-        self.assertEqual(str(local), "Fábrica SP (LOC-001)")
+        local = Local.objects.create(nome_local="Fábrica SP")
+        self.assertEqual(str(local), "Fábrica SP")
 
 
 class EquipamentoModelTest(TestCase):
     def setUp(self):
-        self.local = Local.objects.create(nome_local="Fábrica SP", numero_ativo="LOC-001")
+        self.local = Local.objects.create(nome_local="Fábrica SP")
 
     def test_cria_equipamento_com_fk_local(self):
         eq = Equipamento.objects.create(

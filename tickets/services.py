@@ -82,7 +82,7 @@ class IoTMaximoStrategy(MaximoStrategyBase):
         sumario_limpo = strip_tags(ticket.sumario)
 
         asset_num = ticket.equipamento.numero_ativo if ticket.equipamento else ""
-        local_num = ticket.local.numero_ativo if ticket.local else ""
+        local_nome = ticket.local.nome_local if ticket.local else ""
 
         corpo = f"Descrição do problema: {descricao_limpa}<br><br>"
         corpo += "#MAXIMO_EMAIL_BEGIN<br>"
@@ -90,8 +90,8 @@ class IoTMaximoStrategy(MaximoStrategyBase):
         corpo += f"SR#ASSETNUM={asset_num}<br>;<br>"
         corpo += f"SR#REPORTEDPRIORITY={ticket.prioridade}<br>;<br>"
 
-        if local_num:
-            corpo += f"SR#LOCATION={local_num}<br>;<br>"
+        if local_nome:
+            corpo += f"SR#LOCATION={local_nome}<br>;<br>"
 
         person_id = getattr(usuario, "person_id", None)
         if person_id:

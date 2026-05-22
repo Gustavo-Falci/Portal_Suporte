@@ -395,7 +395,6 @@ class Local(models.Model):
         verbose_name="Clientes com acesso"
     )
     nome_local = models.CharField(max_length=100)
-    numero_ativo = models.CharField(max_length=20)
 
     class Meta:
         db_table = "locais"
@@ -404,7 +403,7 @@ class Local(models.Model):
         ordering = ["nome_local"]
 
     def __str__(self):
-        return f"{self.nome_local} ({self.numero_ativo})"
+        return self.nome_local
 
 
 class Equipamento(models.Model):

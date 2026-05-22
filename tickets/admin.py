@@ -189,8 +189,8 @@ class EquipamentoInline(admin.TabularInline):
 
 @admin.register(Local)
 class LocalAdmin(admin.ModelAdmin):
-    list_display = ("nome_local", "numero_ativo", "total_clientes", "total_equipamentos")
-    search_fields = ("nome_local", "numero_ativo", "clientes__username")
+    list_display = ("nome_local", "total_clientes", "total_equipamentos")
+    search_fields = ("nome_local", "clientes__username")
     autocomplete_fields = ("clientes",)
     inlines = [EquipamentoInline]
 

@@ -23,10 +23,10 @@ class ApiEquipamentosPorLocalTest(TestCase):
             username="outro@test.com", email="outro@test.com", password="x"
         )
 
-        self.local_meu = Local.objects.create(nome_local="Meu Local", numero_ativo="L-MEU")
+        self.local_meu = Local.objects.create(nome_local="Meu Local")
         self.local_meu.clientes.add(self.user)
 
-        self.local_outro = Local.objects.create(nome_local="Outro", numero_ativo="L-OUTRO")
+        self.local_outro = Local.objects.create(nome_local="Outro")
         self.local_outro.clientes.add(self.outro_user)
 
         self.eq_meu = Equipamento.objects.create(

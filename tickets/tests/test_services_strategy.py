@@ -77,9 +77,7 @@ class IoTStrategyPayloadTest(TestCase):
         grupo_iot, _ = Group.objects.get_or_create(name="IoT_Cliente")
         self.user.groups.add(grupo_iot)
 
-        self.local = Local.objects.create(
-            nome_local="Fábrica SP", numero_ativo="LOC-100"
-        )
+        self.local = Local.objects.create(nome_local="Fábrica SP")
         self.local.clientes.add(self.user)
         self.equipamento = Equipamento.objects.create(
             local=self.local, nome_equipamento="Sensor T01", numero_ativo="EQ-500"
@@ -104,7 +102,7 @@ class IoTStrategyPayloadTest(TestCase):
 
     def test_corpo_usa_local_como_location(self):
         corpo = IoTMaximoStrategy().gerar_corpo(self.ticket, self.user)
-        self.assertIn("SR#LOCATION=LOC-100", corpo)
+        self.assertIn("SR#LOCATION=Fábrica SP", corpo)
 
     def test_corpo_nao_inclui_itc_area(self):
         corpo = IoTMaximoStrategy().gerar_corpo(self.ticket, self.user)
