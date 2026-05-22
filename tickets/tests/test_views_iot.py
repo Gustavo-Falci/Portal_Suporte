@@ -51,7 +51,15 @@ class ApiEquipamentosPorLocalTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertEqual(len(data["equipamentos"]), 1)
-        self.assertEqual(data["equipamentos"][0]["id"], self.eq_meu.id)
+        eq = data["equipamentos"][0]
+        self.assertEqual(eq["id"], self.eq_meu.id)
+        self.assertEqual(eq["label"], "Sensor (EQ-MEU)")
+
+    def test_post_nao_permitido(self):
+        self._login()
+        url = reverse("tickets:api_equipamentos_por_local")
+        resp = self.client_http.post(url, {"local_id": self.local_meu.id})
+        self.assertEqual(resp.status_code, 405)
 
     def test_idor_bloqueado_local_de_outro_user(self):
         self._login()

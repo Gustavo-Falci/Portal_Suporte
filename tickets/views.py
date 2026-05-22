@@ -13,6 +13,7 @@ from django.db import transaction
 from .services import MaximoEmailService, NotificationService, MaximoSenderService
 from django.template.loader import render_to_string
 from django.http import JsonResponse
+from django.views.decorators.http import require_http_methods
 from django.core.paginator import Paginator
 from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import SetPasswordForm
@@ -565,6 +566,7 @@ def login_view(request: HttpRequest) -> HttpResponse:
 
 
 @login_required(login_url="/login/")
+@require_http_methods(["GET"])
 def api_equipamentos_por_local(request: HttpRequest) -> JsonResponse:
     """
     Retorna equipamentos do Local informado.
