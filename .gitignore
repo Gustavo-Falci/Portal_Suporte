@@ -8,3 +8,4 @@ staticfiles/
 .DS_Store
 media/
 portal_suporte/settings.py
+.claude/
