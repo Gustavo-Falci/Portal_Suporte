@@ -33,6 +33,11 @@ urlpatterns = [
         views.marcar_notificacao_lida,
         name="marcar_notificacao_lida",
     ),
+    path(
+        "api/equipamentos/",
+        views.api_equipamentos_por_local,
+        name="api_equipamentos_por_local",
+    ),
 ]
 
 if settings.DEBUG:

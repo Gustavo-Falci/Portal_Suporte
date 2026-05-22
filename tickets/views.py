@@ -3,7 +3,10 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpRequest, FileResponse
 from django.contrib import messages
 from django.urls import reverse
-from .models import Ticket, TicketInteracao, Cliente, Notificacao, MAXIMO_STATUS_CHOICES, TicketAnexo
+from .models import (
+    Ticket, TicketInteracao, Cliente, Notificacao,
+    MAXIMO_STATUS_CHOICES, TicketAnexo, Local, Equipamento,
+)
 from .forms import TicketForm, TicketInteracaoForm
 from django.db.models import Q
 from django.db import transaction
@@ -557,5 +560,29 @@ def login_view(request: HttpRequest) -> HttpResponse:
         "form_troca_senha": form_troca_senha,
         "is_troca_senha": bool(form_troca_senha)
     }
-    
+
     return render(request, "tickets/login.html", context)
+
+
+@login_required(login_url="/login/")
+def api_equipamentos_por_local(request: HttpRequest) -> JsonResponse:
+    """
+    Retorna equipamentos do Local informado.
+    Restringe ao escopo de posse do usuário (anti-IDOR).
+    """
+    local_id = request.GET.get("local_id")
+
+    if not local_id or not local_id.isdigit():
+        return JsonResponse({"equipamentos": []})
+
+    local = Local.objects.filter(id=int(local_id), clientes=request.user).first()
+    if not local:
+        return JsonResponse({"equipamentos": []})
+
+    equipamentos = local.equipamentos.values("id", "nome_equipamento", "numero_ativo")
+    return JsonResponse({
+        "equipamentos": [
+            {"id": e["id"], "label": f"{e['nome_equipamento']} ({e['numero_ativo']})"}
+            for e in equipamentos
+        ]
+    })
