@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from django.conf import settings
 
-from .models import Ambiente, Area, Ticket, TicketInteracao
+from .models import Ambiente, Area, Ticket, TicketInteracao, Local, Equipamento
 
 # Obtém o modelo de cliente atual
 Cliente = get_user_model()
@@ -154,7 +154,7 @@ class TicketForm(forms.ModelForm):
     class Meta:
 
         model = Ticket
-        fields = ["sumario", "descricao", "ambiente", "prioridade", "area"]
+        fields = ["sumario", "descricao", "ambiente", "prioridade", "area", "local", "equipamento"]
 
         widgets = {
             "sumario": forms.TextInput(attrs={"class": "form-control", "placeholder": "Resumo curto do problema"}),
@@ -162,28 +162,83 @@ class TicketForm(forms.ModelForm):
             "ambiente": forms.Select(attrs={"class": "form-select"}),
             "prioridade": forms.Select(attrs={"class": "form-select"}),
             "area": forms.Select(attrs={"class": "form-select"}),
+            "local": forms.Select(attrs={"class": "form-select", "id": "id_local"}),
+            "equipamento": forms.Select(attrs={"class": "form-select", "id": "id_equipamento"}),
         }
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
 
-        if user:
+        if not user:
+            return
 
-            self.fields["ambiente"].queryset = Ambiente.objects.filter(clientes=user)
+        is_iot = user.groups.filter(name="IoT_Cliente").exists()
 
-            location_str = str(user.location).upper() if getattr(user, "location", None) else ""
-            empresas_com_area = ["PAMPA", "ABL"]
-            
-            tem_acesso_area = any(empresa in location_str for empresa in empresas_com_area)
+        if is_iot:
+            self._configurar_modo_iot(user)
+        else:
+            self._configurar_modo_ti(user)
 
-            if tem_acesso_area:
-                self.fields["area"].queryset = Area.objects.filter(cliente=user)
-                self.fields["area"].required = False
-            else:
-                self.fields["area"].queryset = Area.objects.none()
-                self.fields["area"].required = False
-                self.fields["area"].widget = forms.HiddenInput()
+    def _configurar_modo_iot(self, user) -> None:
+        # Esconde campos do fluxo TI
+        self.fields["ambiente"].required = False
+        self.fields["ambiente"].queryset = Ambiente.objects.none()
+        self.fields["ambiente"].widget = forms.HiddenInput()
+
+        self.fields["area"].required = False
+        self.fields["area"].queryset = Area.objects.none()
+        self.fields["area"].widget = forms.HiddenInput()
+
+        # Ativa campos IoT
+        self.fields["local"].required = True
+        self.fields["local"].queryset = Local.objects.filter(clientes=user)
+        self.fields["local"].label = "Local Afetado"
+        self.fields["local"].empty_label = "Selecione..."
+
+        self.fields["equipamento"].required = True
+        self.fields["equipamento"].queryset = Equipamento.objects.filter(
+            local__clientes=user
+        )
+        self.fields["equipamento"].label = "Equipamento Afetado"
+        self.fields["equipamento"].empty_label = "Selecione um Local primeiro"
+
+    def _configurar_modo_ti(self, user) -> None:
+        self.fields["ambiente"].queryset = Ambiente.objects.filter(clientes=user)
+
+        location_str = str(user.location).upper() if getattr(user, "location", None) else ""
+        empresas_com_area = ["PAMPA", "ABL"]
+        tem_acesso_area = any(emp in location_str for emp in empresas_com_area)
+
+        if tem_acesso_area:
+            self.fields["area"].queryset = Area.objects.filter(cliente=user)
+            self.fields["area"].required = False
+        else:
+            self.fields["area"].queryset = Area.objects.none()
+            self.fields["area"].required = False
+            self.fields["area"].widget = forms.HiddenInput()
+
+        # Esconde campos IoT no fluxo TI
+        self.fields["local"].required = False
+        self.fields["local"].queryset = Local.objects.none()
+        self.fields["local"].widget = forms.HiddenInput()
+
+        self.fields["equipamento"].required = False
+        self.fields["equipamento"].queryset = Equipamento.objects.none()
+        self.fields["equipamento"].widget = forms.HiddenInput()
+
+    def clean(self):
+        cleaned = super().clean()
+        local = cleaned.get("local")
+        equipamento = cleaned.get("equipamento")
+
+        if local and equipamento and equipamento.local_id != local.id:
+            self.add_error(
+                "equipamento",
+                "Equipamento selecionado não pertence ao Local escolhido."
+            )
+
+        return cleaned
 
     def clean_documento_requisicao(self) -> Any:
 
