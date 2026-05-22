@@ -30,27 +30,39 @@
 
                 <div class="row g-3 mb-3">
                     <div class="col-md-6">
+                        {% if is_iot %}
+                        <div class="form-floating">
+                            <select class="form-select {% if form.local.errors %}is-invalid{% endif %}" id="id_local" name="local" required>
+                                <option value="" disabled {% if not form.local.value %}selected{% endif %}>Selecione...</option>
+                                {% for local in form.fields.local.queryset %}
+                                    <option value="{{ local.id }}"
+                                        {% if form.local.value|stringformat:"s" == local.id|stringformat:"s" %}selected{% endif %}>
+                                        {{ local.nome_local }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <label for="id_local">Local Afetado *</label>
+                            {% if form.local.errors %}
+                                <div class="invalid-feedback">{{ form.local.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        {% else %}
                         <div class="form-floating">
                             <select class="form-select {% if form.ambiente.errors %}is-invalid{% endif %}" id="id_ambiente" name="ambiente">
-                                
                                 <option value="" disabled {% if not form.ambiente.value %}selected{% endif %}>Selecione...</option>
-                                
                                 {% for ambiente in form.fields.ambiente.queryset %}
-                                    <option value="{{ ambiente.id }}" 
+                                    <option value="{{ ambiente.id }}"
                                         {% if form.ambiente.value|stringformat:"s" == ambiente.id|stringformat:"s" %}selected{% endif %}>
                                         {{ ambiente.nome_ambiente }}
                                     </option>
                                 {% endfor %}
                             </select>
-                            
                             <label for="id_ambiente">Ambiente Afetado *</label>
-                            
                             {% if form.ambiente.errors %}
-                                <div class="invalid-feedback">
-                                    {{ form.ambiente.errors.0 }}
-                                </div>
+                                <div class="invalid-feedback">{{ form.ambiente.errors.0 }}</div>
                             {% endif %}
                         </div>
+                        {% endif %}
                     </div>
 
                     <div class="col-md-6">
@@ -72,7 +84,19 @@
                     </div>
                 </div>
 
-                {% if not form.area.is_hidden %}
+                {% if is_iot %}
+                <div class="form-floating mb-3">
+                    <select class="form-select {% if form.equipamento.errors %}is-invalid{% endif %}" id="id_equipamento" name="equipamento" required disabled>
+                        <option value="" disabled selected>Selecione um Local primeiro</option>
+                    </select>
+                    <label for="id_equipamento">Equipamento Afetado *</label>
+                    {% if form.equipamento.errors %}
+                        <div class="invalid-feedback">{{ form.equipamento.errors.0 }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                {% if not is_iot and not form.area.is_hidden %}
                 <div class="form-floating mb-3">
                     <select class="form-select {% if form.area.errors %}is-invalid{% endif %}" id="area" name="area">
                         <option value="" {% if not form.area.value %}selected{% endif %}>Não se aplica / Geral</option>
@@ -345,7 +369,7 @@
             var clearError = function() {
                 if (field.classList.contains('is-invalid')) {
                     field.classList.remove('is-invalid');
-                    
+
                     // Limpa a div de erro correta dependendo de qual campo foi corrigido
                     if (field.id === 'arquivo' && errorDiv) {
                         errorDiv.textContent = '';
@@ -365,6 +389,56 @@
             field.addEventListener('input', clearError);
             field.addEventListener('change', clearError);
         });
+
+        // --- 8. CASCADE LOCAL -> EQUIPAMENTO (FLUXO IoT) ---
+        const localSelect = document.getElementById('id_local');
+        const equipSelect = document.getElementById('id_equipamento');
+
+        if (localSelect && equipSelect) {
+            const equipamentoSelecionado = "{{ form.equipamento.value|default:'' }}";
+
+            async function carregarEquipamentos(localId, preservar = '') {
+                equipSelect.innerHTML = '<option value="">Carregando...</option>';
+                equipSelect.disabled = true;
+
+                if (!localId) {
+                    equipSelect.innerHTML = '<option value="" disabled selected>Selecione um Local primeiro</option>';
+                    return;
+                }
+
+                try {
+                    const url = "{% url 'tickets:api_equipamentos_por_local' %}?local_id=" + encodeURIComponent(localId);
+                    const resp = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const data = await resp.json();
+
+                    if (!data.equipamentos.length) {
+                        equipSelect.innerHTML = '<option value="" disabled selected>Nenhum equipamento cadastrado para este Local</option>';
+                        return;
+                    }
+
+                    let html = '<option value="" disabled selected>Selecione...</option>';
+                    data.equipamentos.forEach(function(eq) {
+                        const sel = (String(eq.id) === String(preservar)) ? ' selected' : '';
+                        html += '<option value="' + eq.id + '"' + sel + '>' + eq.label + '</option>';
+                    });
+                    equipSelect.innerHTML = html;
+                    equipSelect.disabled = false;
+                } catch (err) {
+                    console.error('Erro ao carregar equipamentos:', err);
+                    equipSelect.innerHTML = '<option value="" disabled selected>Erro ao carregar. Tente novamente.</option>';
+                }
+            }
+
+            localSelect.addEventListener('change', function() {
+                carregarEquipamentos(this.value);
+            });
+
+            // Repopulação após erro de validação (POST inválido recarrega a página)
+            if (localSelect.value) {
+                carregarEquipamentos(localSelect.value, equipamentoSelecionado);
+            }
+        }
     });
 </script>
 {% endblock %}
