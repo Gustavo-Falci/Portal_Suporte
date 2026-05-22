@@ -1,6 +1,9 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Cliente, Ambiente, Area, Ticket, TicketInteracao, Notificacao, TicketAnexo
+from .models import (
+    Cliente, Ambiente, Area, Ticket, TicketInteracao,
+    Notificacao, TicketAnexo, Local, Equipamento,
+)
 
 # Customização do Cabeçalho
 admin.site.site_header = "Portal de Suporte | Administração"
@@ -88,7 +91,7 @@ class TicketAdmin(admin.ModelAdmin):
         "maximo_id",
     )
 
-    list_select_related = ("cliente", "area", "ambiente")
+    list_select_related = ("cliente", "area", "ambiente", "local", "equipamento")
     autocomplete_fields = ["cliente"]
     readonly_fields = ("data_criacao", "data_atualizacao", "maximo_id")
     ordering = ("-data_criacao",)
@@ -111,7 +114,7 @@ class TicketAdmin(admin.ModelAdmin):
         (
             "Classificação",
             {
-                "fields": ("area", "ambiente") 
+                "fields": ("area", "ambiente", "local", "equipamento")
             },
         ),
         (
@@ -176,3 +179,33 @@ class NotificacaoAdmin(admin.ModelAdmin):
     list_display = ("destinatario", "titulo", "lida", "data_criacao")
     list_filter = ("lida", "tipo")
     search_fields = ("destinatario__username", "mensagem")
+
+
+class EquipamentoInline(admin.TabularInline):
+    model = Equipamento
+    extra = 1
+    fields = ("nome_equipamento", "numero_ativo")
+
+
+@admin.register(Local)
+class LocalAdmin(admin.ModelAdmin):
+    list_display = ("nome_local", "numero_ativo", "total_clientes", "total_equipamentos")
+    search_fields = ("nome_local", "numero_ativo", "clientes__username")
+    autocomplete_fields = ("clientes",)
+    inlines = [EquipamentoInline]
+
+    def total_clientes(self, obj):
+        return obj.clientes.count()
+    total_clientes.short_description = "Clientes"
+
+    def total_equipamentos(self, obj):
+        return obj.equipamentos.count()
+    total_equipamentos.short_description = "Equipamentos"
+
+
+@admin.register(Equipamento)
+class EquipamentoAdmin(admin.ModelAdmin):
+    list_display = ("nome_equipamento", "numero_ativo", "local")
+    list_filter = ("local",)
+    search_fields = ("nome_equipamento", "numero_ativo", "local__nome_local")
+    autocomplete_fields = ("local",)
