@@ -35,6 +35,7 @@ Um portal web robusto desenvolvido para clientes realizarem abertura, acompanham
 
 1. **Autenticação via Email:** O usuário (`Cliente`, que estende `AbstractUser`) não utiliza o `username` clássico para login. O acesso é feito estritamente pelo E-mail, que é vinculado ao `person_id` e `location` no IBM Maximo.
 2. **Lógica de "Área" Dinâmica:** O campo "Área" (`Area`) no formulário de novos tickets é injetado dinamicamente. Ele só é obrigatório/visível se o usuário pertencer a empresas específicas (ex: "PAMPA" ou "ABL"), verificado através do domínio do e-mail ou vínculo direto na base.
+3. **Fluxo de Suporte IoT:** Clientes do grupo `IoT_Cliente` abrem tickets com campos **Local Afetado** + **Equipamento Afetado** (em cascata via AJAX) em vez de Ambiente. Consultores do grupo `IoT_Suporte` veem apenas tickets dos clientes IoT. O payload Maximo destes tickets usa `SITEID=ITCIOT` (em vez de `ITCBR`), com `SR#LOCATION=Local.numero_ativo` e `SR#ASSETNUM=Equipamento.numero_ativo`.
 
 ---
 
@@ -48,6 +49,8 @@ O sistema está centrado no app principal `tickets`. Os principais modelos de da
 * `Ticket`: O chamado em si, contendo status, descrição e ID de espelhamento com o IBM Maximo (`maximo_id`).
 * `TicketInteracao`: Linha do tempo de mensagens (Worklogs) e anexos trocados entre o cliente e o suporte.
 * `Notificacao`: Alertas disparados para os usuários baseados em ações do sistema (ex: mudança de status).
+* `Local`: Subdivisão de localização física usada no fluxo IoT (M2M com Cliente IoT).
+* `Equipamento`: Ativos IoT vinculados a um Local (FK).
 
 ---
 
@@ -56,7 +59,7 @@ O sistema está centrado no app principal `tickets`. Os principais modelos de da
 ### 1. Criação via Email Listener
 A criação inicial de tickets no Maximo é feita disparando um e-mail com um *payload* posicional estrito no corpo da mensagem. O serviço de e-mail formata os dados para que o Maximo processe as tags e gere o ticket automaticamente.
 
-**Estrutura do Payload:**
+**Estrutura do Payload (Fluxo TI — `SITEID=ITCBR`):**
 ```bash
 <br>
 
@@ -86,6 +89,16 @@ SR#TICKETID=&AUTOKEY&<br>
 ;<br>
 #MAXIMO_EMAIL_END<br><br>
 ```
+
+### Estrutura do Payload (Fluxo IoT — `SITEID=ITCIOT`):
+O fluxo IoT mantém a mesma estrutura de tags, com 3 diferenças:
+- `SR#SITEID=ITCIOT` (em vez de `ITCBR`)
+- `SR#LOCATION={Local.numero_ativo}` (em vez de `Cliente.location`)
+- `SR#ASSETNUM={Equipamento.numero_ativo}` (em vez de `Ambiente.numero_ativo`)
+- Não inclui `SR#ITC_AREA`
+- Assunto começa com "Novo Ticket IoT" em vez de "Novo Ticket"
+
+A escolha entre fluxos é feita em runtime pelo `MaximoEmailService` via Strategy pattern (`TIMaximoStrategy` vs `IoTMaximoStrategy`), baseado no grupo do usuário (`IoT_Cliente`).
 
 ### 2. Sincronização de Worklogs via API (API REST)
 As interações/respostas inseridas no portal (`TicketInteracao`) são enviadas para o Maximo através de requisições REST POST (`MaximoSenderService`), sincronizando o chat do cliente diretamente com os *Worklogs* do Service Request no IBM Maximo.
