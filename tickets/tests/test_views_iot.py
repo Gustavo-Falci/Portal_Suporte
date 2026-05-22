@@ -82,3 +82,66 @@ class ApiEquipamentosPorLocalTest(TestCase):
         resp = self.client_http.get(url)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(json.loads(resp.content)["equipamentos"], [])
+
+
+from tickets.views import _usuario_tem_acesso_ticket
+from tickets.models import Ticket
+
+
+class UsuarioTemAcessoTicketIoTTest(TestCase):
+    def setUp(self):
+        self.cliente_iot = Cliente.objects.create_user(
+            username="ciot@test.com", email="ciot@test.com", password="x"
+        )
+        Group.objects.get_or_create(name="IoT_Cliente")
+        Group.objects.get_or_create(name="IoT_Suporte")
+        self.cliente_iot.groups.add(Group.objects.get(name="IoT_Cliente"))
+
+        self.suporte_iot = Cliente.objects.create_user(
+            username="siot@test.com", email="siot@test.com", password="x"
+        )
+        self.suporte_iot.groups.add(Group.objects.get(name="IoT_Suporte"))
+
+        self.cliente_ti = Cliente.objects.create_user(
+            username="cti@test.com", email="cti@test.com", password="x"
+        )
+
+        self.ticket_iot = Ticket.objects.create(
+            cliente=self.cliente_iot, sumario="x", descricao="y", prioridade="3"
+        )
+        self.ticket_ti = Ticket.objects.create(
+            cliente=self.cliente_ti, sumario="x", descricao="y", prioridade="3"
+        )
+
+    def test_iot_suporte_acessa_ticket_de_iot_cliente(self):
+        self.assertTrue(_usuario_tem_acesso_ticket(self.suporte_iot, self.ticket_iot))
+
+    def test_iot_suporte_nao_acessa_ticket_de_cliente_ti(self):
+        self.assertFalse(_usuario_tem_acesso_ticket(self.suporte_iot, self.ticket_ti))
+
+    def test_cliente_iot_acessa_proprio_ticket(self):
+        self.assertTrue(_usuario_tem_acesso_ticket(self.cliente_iot, self.ticket_iot))
+
+
+class CriarTicketContextoIsIotTest(TestCase):
+    def setUp(self):
+        self.client_http = Client()
+        self.user_iot = Cliente.objects.create_user(
+            username="iot@test.com", email="iot@test.com", password="x"
+        )
+        grupo, _ = Group.objects.get_or_create(name="IoT_Cliente")
+        self.user_iot.groups.add(grupo)
+
+        self.user_ti = Cliente.objects.create_user(
+            username="ti@test.com", email="ti@test.com", password="x"
+        )
+
+    def test_is_iot_true_no_contexto_para_iot_cliente(self):
+        self.client_http.force_login(self.user_iot)
+        resp = self.client_http.get(reverse("tickets:criar_ticket"))
+        self.assertTrue(resp.context["is_iot"])
+
+    def test_is_iot_false_no_contexto_para_user_ti(self):
+        self.client_http.force_login(self.user_ti)
+        resp = self.client_http.get(reverse("tickets:criar_ticket"))
+        self.assertFalse(resp.context["is_iot"])

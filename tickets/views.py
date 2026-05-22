@@ -33,12 +33,17 @@ def _usuario_tem_acesso_ticket(user: Cliente, ticket: Ticket) -> bool:
     is_dono = (ticket.cliente == user)
     is_staff = getattr(user, 'is_support_team', False) or user.is_superuser
     is_lider = user.groups.filter(name="lider_suporte").exists()
-    
+
     is_owner_assigned = False
     if user.person_id and ticket.owner:
         is_owner_assigned = (ticket.owner.lower() == user.person_id.lower())
-        
-    return is_dono or is_staff or is_lider or is_owner_assigned
+
+    is_iot_suporte = (
+        user.is_iot_suporte
+        and ticket.cliente.is_iot_cliente
+    )
+
+    return is_dono or is_staff or is_lider or is_owner_assigned or is_iot_suporte
 
 
 # PÁGINA INICIAL
@@ -191,7 +196,8 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
     else:
         form = TicketForm(user=request.user)
 
-    return render(request, "tickets/criar_ticket.html", {"form": form})
+    is_iot = request.user.is_iot_cliente
+    return render(request, "tickets/criar_ticket.html", {"form": form, "is_iot": is_iot})
 
 
 # DETALHE DO TICKET
