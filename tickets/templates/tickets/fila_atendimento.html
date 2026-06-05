@@ -67,14 +67,26 @@
 
                 <div class="col-md-3">
                     <label class="form-label small fw-bold text-uppercase text-muted mb-1">Status</label>
-                    <select name="status" class="form-select rounded-0">
-                        <option value="">Todos os Status</option>
-                        {% for code, label in status_choices %}
-                            <option value="{{ code }}" {% if filtros_atuais.status == code %}selected{% endif %}>
-                                {{ label }}
-                            </option>
-                        {% endfor %}
-                    </select>
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary rounded-0 w-100 d-flex justify-content-between align-items-center"
+                                type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <span>
+                                {% if status_selecionados %}{{ status_selecionados|length }} selecionado(s){% else %}Todos os Status{% endif %}
+                            </span>
+                            <i class="bi bi-chevron-down ms-2"></i>
+                        </button>
+                        <ul class="dropdown-menu rounded-0 p-2 w-100" style="max-height: 280px; overflow-y: auto;">
+                            {% for code, label in status_choices %}
+                            <li>
+                                <label class="dropdown-item d-flex align-items-center gap-2 px-2">
+                                    <input type="checkbox" name="status" value="{{ code }}"
+                                           {% if code in status_selecionados %}checked{% endif %}>
+                                    {{ label }}
+                                </label>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
                 </div>
 
                 <div class="col-md-2 d-flex gap-2">

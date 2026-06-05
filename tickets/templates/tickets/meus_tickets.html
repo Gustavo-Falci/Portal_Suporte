@@ -9,7 +9,7 @@
 <div class="container mt-5">
     <div class="row mb-4 align-items-center">
         <div class="col-md-8">
-            <h2 class="fw-bold mb-1">Meus Tickets</h2>
+            <h2 class="fw-bold mb-1">Chamados</h2>
             <p class="text-muted mb-0" style="font-size: 0.9rem;">
                 Acompanhe o status das seus tickets.
             </p>
@@ -24,6 +24,8 @@
     <div class="card bg-light border-0 mb-4 rounded-0 shadow-sm">
         <div class="card-body p-3">
             <form method="GET" action="{% url 'tickets:meus_tickets' %}" class="row g-2 align-items-end">
+
+                {% if escopo_atual %}<input type="hidden" name="escopo" value="{{ escopo_atual }}">{% endif %}
 
                 <div class="col-md-5">
                     <label class="form-label small fw-bold text-uppercase text-muted mb-1">Buscar</label>
@@ -41,14 +43,26 @@
 
                 <div class="col-md-4">
                     <label class="form-label small fw-bold text-uppercase text-muted mb-1">Status</label>
-                    <select name="status" class="form-select rounded-0">
-                        <option value="">Todos os Status</option>
-                        {% for key, value in status_choices %}
-                            <option value="{{ key }}" {% if filtros_atuais.status == key %}selected{% endif %}>
-                                {{ value }}
-                            </option>
-                        {% endfor %}
-                    </select>
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary rounded-0 w-100 d-flex justify-content-between align-items-center"
+                                type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <span>
+                                {% if status_selecionados %}{{ status_selecionados|length }} selecionado(s){% else %}Todos os Status{% endif %}
+                            </span>
+                            <i class="bi bi-chevron-down ms-2"></i>
+                        </button>
+                        <ul class="dropdown-menu rounded-0 p-2 w-100" style="max-height: 280px; overflow-y: auto;">
+                            {% for key, value in status_choices %}
+                            <li>
+                                <label class="dropdown-item d-flex align-items-center gap-2 px-2">
+                                    <input type="checkbox" name="status" value="{{ key }}"
+                                           {% if key in status_selecionados %}checked{% endif %}>
+                                    {{ value }}
+                                </label>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
                 </div>
 
                 <div class="col-md-3 d-flex gap-2">
@@ -65,6 +79,21 @@
         </div>
     </div>
 
+    <div class="btn-group mb-3" role="group" aria-label="Escopo dos chamados">
+        <a href="?{% if filtros_atuais.q %}q={{ filtros_atuais.q }}&{% endif %}{% for s in status_selecionados %}status={{ s }}&{% endfor %}"
+           class="btn rounded-0 {% if not escopo_atual %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+            Todos <span class="badge bg-light text-dark ms-1">{{ count_todos }}</span>
+        </a>
+        <a href="?escopo=meus{% if filtros_atuais.q %}&q={{ filtros_atuais.q }}{% endif %}{% for s in status_selecionados %}&status={{ s }}{% endfor %}"
+           class="btn rounded-0 {% if escopo_atual == 'meus' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+            Meus <span class="badge bg-light text-dark ms-1">{{ count_meus }}</span>
+        </a>
+        <a href="?escopo=equipe{% if filtros_atuais.q %}&q={{ filtros_atuais.q }}{% endif %}{% for s in status_selecionados %}&status={{ s }}{% endfor %}"
+           class="btn rounded-0 {% if escopo_atual == 'equipe' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+            Equipe <span class="badge bg-light text-dark ms-1">{{ count_equipe }}</span>
+        </a>
+    </div>
+
     <div class="card shadow-sm border-0" style="border-radius: 0;">
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -73,6 +102,7 @@
                         <tr>
                             <th scope="col" class="py-3 ps-4" style="width: 200px;">ID</th>
                             <th scope="col" class="py-3" style="width: auto;">Descrição</th>
+                            <th scope="col" class="py-3" style="width: 180px;">Criado por</th>
                             <th scope="col" class="py-3" style="width: 200px;">Aberto em</th>
                             <th scope="col" class="py-3" style="width: 120px;">Status</th>
                             <th scope="col" class="text-end pe-4 py-3" style="width: 200px;"></th>
@@ -80,7 +110,7 @@
                     </thead>
                     <tbody>
                         {% for ticket in tickets %}
-                        <tr id="ticket-{{ ticket.pk }}" style="scroll-margin-top: 100px;">
+                        <tr id="ticket-{{ ticket.pk }}" style="scroll-margin-top: 100px; {% if ticket.cliente_id == request.user.id %}border-left: 3px solid var(--ibm-blue-60);{% endif %}">
                             <td class="ps-4">
                                 {% if ticket.maximo_id %}
                                     <span class="badge bg-light text-dark border font-monospace">
@@ -97,6 +127,15 @@
                                 <span class="d-inline-block text-truncate" style="max-width: 500px;" title="{{ ticket.sumario }}">
                                     {{ ticket.sumario }}
                                 </span>
+                            </td>
+                            <td>
+                                {% if ticket.cliente_id == request.user.id %}
+                                    <span class="badge rounded-0 fw-normal px-2 py-1" style="background-color: var(--ibm-blue-60); color: #fff;">Você</span>
+                                {% else %}
+                                    <span class="badge bg-secondary-subtle text-dark rounded-0 fw-normal px-2 py-1" title="Chamado da equipe">
+                                        {{ ticket.cliente.get_short_name|default:ticket.cliente.username }}
+                                    </span>
+                                {% endif %}
                             </td>
                             <td>{{ ticket.data_criacao|date:"d/m/Y H:i" }}</td>
                             <td>
