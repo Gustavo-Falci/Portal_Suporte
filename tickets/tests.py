@@ -222,6 +222,59 @@ class VisaoEquipeLocationTests(TestCase):
         self.assertEqual(resp.context["total_abertos"], 2)
 
 
+class SeparacaoGmailTests(TestCase):
+    """Contas @gmail são separadas dos clientes corporativos na visão de equipe.
+
+    Dentro da mesma location coexistem 2 mundos: corporativo (domínio próprio)
+    e genérico (@gmail). Cada um só enxerga o seu próprio grupo.
+    """
+
+    def setUp(self):
+        self.corp1 = Cliente.objects.create_user(
+            email="ana@pampa.com", username="corp1", password="123", location="PAMPA"
+        )
+        self.corp2 = Cliente.objects.create_user(
+            email="bruno@pampa.com", username="corp2", password="123", location="PAMPA"
+        )
+        self.gm1 = Cliente.objects.create_user(
+            email="pampa@gmail.com", username="gm1", password="123", location="PAMPA"
+        )
+        self.gm2 = Cliente.objects.create_user(
+            email="teste@gmail.com", username="gm2", password="123", location="PAMPA"
+        )
+        for u in (self.corp1, self.corp2, self.gm1, self.gm2):
+            u.precisa_trocar_senha = False
+            u.save()
+        self.t_corp1 = Ticket.objects.create(cliente=self.corp1, sumario="c1", descricao="d")
+        self.t_corp2 = Ticket.objects.create(cliente=self.corp2, sumario="c2", descricao="d")
+        self.t_gm1 = Ticket.objects.create(cliente=self.gm1, sumario="g1", descricao="d")
+        self.t_gm2 = Ticket.objects.create(cliente=self.gm2, sumario="g2", descricao="d")
+
+    def test_corporativo_nao_ve_gmail(self):
+        vis = _tickets_visiveis_cliente(self.corp1)
+        self.assertIn(self.t_corp1, vis)
+        self.assertIn(self.t_corp2, vis)
+        self.assertNotIn(self.t_gm1, vis)
+        self.assertNotIn(self.t_gm2, vis)
+
+    def test_gmail_ve_so_gmail_mesma_location(self):
+        vis = _tickets_visiveis_cliente(self.gm1)
+        self.assertIn(self.t_gm1, vis)
+        self.assertIn(self.t_gm2, vis)
+        self.assertNotIn(self.t_corp1, vis)
+        self.assertNotIn(self.t_corp2, vis)
+
+    def test_permissao_cruzada_gmail_corp_negada(self):
+        self.assertFalse(_usuario_tem_acesso_ticket(self.corp1, self.t_gm1))
+        self.assertFalse(_usuario_tem_acesso_ticket(self.gm1, self.t_corp1))
+
+    def test_permissao_gmail_entre_gmail_concede(self):
+        self.assertTrue(_usuario_tem_acesso_ticket(self.gm1, self.t_gm2))
+
+    def test_permissao_corp_entre_corp_concede(self):
+        self.assertTrue(_usuario_tem_acesso_ticket(self.corp1, self.t_corp2))
+
+
 class FiltroMultiStatusTests(TestCase):
     """Filtro de status com múltipla seleção em meus_tickets e fila_atendimento."""
 

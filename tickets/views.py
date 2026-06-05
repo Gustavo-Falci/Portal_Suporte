@@ -24,6 +24,15 @@ import threading
 logger = logging.getLogger(__name__)
 
 
+# Sufixo de email tratado como conta genérica (não-cliente corporativo).
+GMAIL_SUFFIXO = "@gmail.com"
+
+
+def _email_eh_gmail(user: Cliente) -> bool:
+    """True se o email do usuário é uma conta @gmail (genérica, não corporativa)."""
+    return (user.email or "").strip().lower().endswith(GMAIL_SUFFIXO)
+
+
 # --- FUNÇÃO AUXILIAR DE PERMISSÕES ---
 def _usuario_tem_acesso_ticket(user: Cliente, ticket: Ticket) -> bool:
     is_dono = (ticket.cliente == user)
@@ -36,7 +45,12 @@ def _usuario_tem_acesso_ticket(user: Cliente, ticket: Ticket) -> bool:
 
     loc_user = (user.location or "").strip()
     loc_ticket = (ticket.cliente.location or "").strip()
-    is_mesma_empresa = bool(loc_user) and loc_user.lower() == loc_ticket.lower()
+    # Mesma empresa = mesma location E mesmo "mundo" de email (gmail só com gmail).
+    is_mesma_empresa = (
+        bool(loc_user)
+        and loc_user.lower() == loc_ticket.lower()
+        and _email_eh_gmail(user) == _email_eh_gmail(ticket.cliente)
+    )
 
     return is_dono or is_staff or is_lider or is_owner_assigned or is_mesma_empresa
 
@@ -45,12 +59,18 @@ def _tickets_visiveis_cliente(user: Cliente) -> QuerySet:
     """Queryset de tickets visíveis para um cliente comum.
 
     Agrupa por empresa via Cliente.location (match case-insensitive).
+    Contas @gmail são separadas dos clientes corporativos: dentro da mesma
+    location, gmail só enxerga gmail e corporativo só enxerga corporativo.
     Guard: location vazio/null => vê apenas os próprios tickets.
     """
     loc = (user.location or "").strip()
-    if loc:
-        return Ticket.objects.filter(cliente__location__iexact=loc)
-    return Ticket.objects.filter(cliente=user)
+    if not loc:
+        return Ticket.objects.filter(cliente=user)
+
+    qs = Ticket.objects.filter(cliente__location__iexact=loc)
+    if _email_eh_gmail(user):
+        return qs.filter(cliente__email__iendswith=GMAIL_SUFFIXO)
+    return qs.exclude(cliente__email__iendswith=GMAIL_SUFFIXO)
 
 
 # PÁGINA INICIAL
