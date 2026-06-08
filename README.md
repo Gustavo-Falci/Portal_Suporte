@@ -27,6 +27,7 @@ Um portal web robusto desenvolvido para clientes realizarem abertura, acompanham
 * **Gestão de Anexos Segura:** Sistema robusto de validação de arquivos (`_validar_anexo_comum`), limitando uploads a 150MB e restrição estrita de *MIME types* e extensões.
 * **Comunicação Bidirecional:** Chat interno no ticket (`TicketInteracao`) com upload de evidências e histórico imutável para fins de auditoria.
 * **Notificações In-App:** Alertas em tempo real de mudanças de status do ticket (`monitorar_mudancas_ticket` via Signals) e novas mensagens.
+* **Visão de Equipe & Filtros:** Listagem de tickets com escopo alternável (Todos / Meus / Equipe) compartilhado por empresa via `location`, e filtro de status com **seleção múltipla** (dropdown de checkboxes) tanto em "Meus Tickets" quanto na Fila de Atendimento.
 * **Arquitetura Baseada em Funções (FBV):** Código padronizado utilizando *Function-Based Views* com forte tipagem (*Type Hints*) no Python.
 
 ---
@@ -35,7 +36,8 @@ Um portal web robusto desenvolvido para clientes realizarem abertura, acompanham
 
 1. **Autenticação via Email:** O usuário (`Cliente`, que estende `AbstractUser`) não utiliza o `username` clássico para login. O acesso é feito estritamente pelo E-mail, que é vinculado ao `person_id` e `location` no IBM Maximo.
 2. **Lógica de "Área" Dinâmica:** O campo "Área" (`Area`) no formulário de novos tickets é injetado dinamicamente. Ele só é obrigatório/visível se o usuário pertencer a empresas específicas (ex: "PAMPA" ou "ABL"), verificado através do domínio do e-mail ou vínculo direto na base.
-3. **Fluxo de Suporte IoT:** Clientes do grupo `IoT_Cliente` abrem tickets com campos **Local Afetado** + **Equipamento Afetado** (em cascata via AJAX) em vez de Ambiente. Consultores do grupo `IoT_Suporte` veem apenas tickets dos clientes IoT. O payload Maximo destes tickets usa `SITEID=ITCIOT` (em vez de `ITCBR`), com `SR#LOCATION=Local.numero_ativo` e `SR#ASSETNUM=Equipamento.numero_ativo`.
+3. **Fluxo de Suporte IoT:** Clientes do grupo `IoT_Cliente` abrem tickets com campos **Local Afetado** + **Equipamento Afetado** (em cascata via AJAX) em vez de Ambiente. Consultores do grupo `IoT_Suporte` veem apenas tickets dos clientes IoT. O payload Maximo destes tickets usa `SITEID=ITCIOT` (em vez de `ITCBR`), com `SR#LOCATION=Local.nome_local` (campo descritivo, ex: "PORTÃO B") e `SR#ASSETNUM=Equipamento.numero_ativo`.
+4. **Visão Compartilhada por Empresa:** Clientes comuns com o mesmo `Cliente.location` (não-vazio, match *case-insensitive*) enxergam e interagem com os tickets uns dos outros, dando continuidade de atendimento entre a equipe da empresa. **Separação de contas:** dentro da mesma `location`, contas `@gmail.com` (genéricas/teste) só enxergam outras `@gmail`, enquanto contas corporativas só enxergam não-gmail — os dois mundos nunca se misturam. A fonte única do queryset é `_tickets_visiveis_cliente`; `location` vazio/null restringe à visão apenas dos próprios tickets.
 
 ---
 
@@ -49,7 +51,7 @@ O sistema está centrado no app principal `tickets`. Os principais modelos de da
 * `Ticket`: O chamado em si, contendo status, descrição e ID de espelhamento com o IBM Maximo (`maximo_id`).
 * `TicketInteracao`: Linha do tempo de mensagens (Worklogs) e anexos trocados entre o cliente e o suporte.
 * `Notificacao`: Alertas disparados para os usuários baseados em ações do sistema (ex: mudança de status).
-* `Local`: Subdivisão de localização física usada no fluxo IoT (M2M com Cliente IoT).
+* `Local`: Subdivisão de localização física usada no fluxo IoT (M2M com Cliente IoT). Campo `nome_local` é apenas descritivo (não é ativo Maximo); vai como `SR#LOCATION` no payload.
 * `Equipamento`: Ativos IoT vinculados a um Local (FK).
 
 ---
@@ -93,7 +95,7 @@ SR#TICKETID=&AUTOKEY&<br>
 ### Estrutura do Payload (Fluxo IoT — `SITEID=ITCIOT`):
 O fluxo IoT mantém a mesma estrutura de tags, com 3 diferenças:
 - `SR#SITEID=ITCIOT` (em vez de `ITCBR`)
-- `SR#LOCATION={Local.numero_ativo}` (em vez de `Cliente.location`)
+- `SR#LOCATION={Local.nome_local}` (campo descritivo do Local, ex: "PORTÃO B" — em vez de `Cliente.location`)
 - `SR#ASSETNUM={Equipamento.numero_ativo}` (em vez de `Ambiente.numero_ativo`)
 - Não inclui `SR#ITC_AREA`
 - Assunto começa com "Novo Ticket IoT" em vez de "Novo Ticket"
