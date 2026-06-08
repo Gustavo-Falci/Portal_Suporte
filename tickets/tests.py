@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from unittest.mock import patch
-from .models import Ticket, TicketInteracao, Ambiente
+from .models import Ticket, TicketInteracao, Ambiente, Notificacao
 from .services import MaximoSenderService
 from tickets.views import _tickets_visiveis_cliente, _usuario_tem_acesso_ticket
 
@@ -326,3 +326,50 @@ class FiltroMultiStatusTests(TestCase):
         )
         ids = {t.pk for t in resp.context["tickets"]}
         self.assertEqual(ids, {self.t_new.pk, self.t_closed.pk})
+
+
+class MarcarTodasNotificacoesLidasTests(TestCase):
+    """Botão 'marcar todas como lidas' no sino de notificações."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="dono@acme.com", username="dono", password="123"
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.outro = Cliente.objects.create_user(
+            email="outro@acme.com", username="outro", password="123"
+        )
+        # 3 não-lidas do user + 1 já lida
+        for i in range(3):
+            Notificacao.objects.create(
+                destinatario=self.user, mensagem=f"msg {i}", lida=False
+            )
+        Notificacao.objects.create(
+            destinatario=self.user, mensagem="ja lida", lida=True
+        )
+        # notificação não-lida de outro usuário (não deve ser tocada)
+        self.notif_outro = Notificacao.objects.create(
+            destinatario=self.outro, mensagem="do outro", lida=False
+        )
+
+    def test_marca_todas_nao_lidas_do_usuario(self):
+        self.client.login(email="dono@acme.com", password="123")
+        resp = self.client.post(reverse("tickets:marcar_todas_notificacoes_lidas"))
+        self.assertEqual(resp.status_code, 302)
+        nao_lidas = Notificacao.objects.filter(
+            destinatario=self.user, lida=False
+        ).count()
+        self.assertEqual(nao_lidas, 0)
+
+    def test_nao_toca_notificacoes_de_outro_usuario(self):
+        self.client.login(email="dono@acme.com", password="123")
+        self.client.post(reverse("tickets:marcar_todas_notificacoes_lidas"))
+        self.notif_outro.refresh_from_db()
+        self.assertFalse(self.notif_outro.lida)
+
+    def test_get_nao_permitido(self):
+        self.client.login(email="dono@acme.com", password="123")
+        resp = self.client.get(reverse("tickets:marcar_todas_notificacoes_lidas"))
+        self.assertEqual(resp.status_code, 405)

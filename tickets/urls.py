@@ -33,6 +33,11 @@ urlpatterns = [
         views.marcar_notificacao_lida,
         name="marcar_notificacao_lida",
     ),
+    path(
+        "notificacao/ler-todas/",
+        views.marcar_todas_notificacoes_lidas,
+        name="marcar_todas_notificacoes_lidas",
+    ),
 ]
 
 if settings.DEBUG:

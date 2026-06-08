@@ -11,6 +11,8 @@ from .services import MaximoEmailService, NotificationService, MaximoSenderServi
 from django.template.loader import render_to_string
 from django.http import JsonResponse
 from django.core.paginator import Paginator
+from django.views.decorators.http import require_http_methods
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import SetPasswordForm
 from .forms import EmailAuthenticationForm
@@ -537,9 +539,24 @@ def marcar_notificacao_lida(request: Any, notificacao_id: int) -> Any:
     
     if hasattr(notificacao, 'link') and notificacao.link:
         return redirect(notificacao.link)
-    
+
     return redirect("tickets:pagina_inicial")
-    
+
+
+@login_required(login_url="/login/")
+@require_http_methods(["POST"])
+def marcar_todas_notificacoes_lidas(request: HttpRequest) -> HttpResponse:
+    """Marca todas as notificações não-lidas do usuário como lidas (bulk)."""
+    Notificacao.objects.filter(destinatario=request.user, lida=False).update(lida=True)
+
+    referer = request.META.get("HTTP_REFERER")
+    if referer and url_has_allowed_host_and_scheme(
+        referer, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return redirect(referer)
+    return redirect("tickets:pagina_inicial")
+
+
 def login_view(request: HttpRequest) -> HttpResponse:
 
     """
