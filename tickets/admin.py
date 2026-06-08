@@ -111,7 +111,7 @@ class TicketAdmin(admin.ModelAdmin):
         (
             "Classificação",
             {
-                "fields": ("area", "ambiente") 
+                "fields": ("area", "ambiente")
             },
         ),
         (
