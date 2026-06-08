@@ -8,7 +8,7 @@ from .models import (
     MAXIMO_STATUS_CHOICES, TicketAnexo, Local, Equipamento,
 )
 from .forms import TicketForm, TicketInteracaoForm
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.db import transaction
 from .services import MaximoEmailService, NotificationService, MaximoSenderService
 from django.template.loader import render_to_string
@@ -28,6 +28,15 @@ import threading
 logger = logging.getLogger(__name__)
 
 
+# Sufixo de email tratado como conta genérica (não-cliente corporativo).
+GMAIL_SUFFIXO = "@gmail.com"
+
+
+def _email_eh_gmail(user: Cliente) -> bool:
+    """True se o email do usuário é uma conta @gmail (genérica, não corporativa)."""
+    return (user.email or "").strip().lower().endswith(GMAIL_SUFFIXO)
+
+
 # --- FUNÇÃO AUXILIAR DE PERMISSÕES ---
 def _usuario_tem_acesso_ticket(user: Cliente, ticket: Ticket) -> bool:
     is_dono = (ticket.cliente == user)
@@ -43,7 +52,37 @@ def _usuario_tem_acesso_ticket(user: Cliente, ticket: Ticket) -> bool:
         and ticket.cliente.is_iot_cliente
     )
 
-    return is_dono or is_staff or is_lider or is_owner_assigned or is_iot_suporte
+    loc_user = (user.location or "").strip()
+    loc_ticket = (ticket.cliente.location or "").strip()
+    # Mesma empresa = mesma location E mesmo "mundo" de email (gmail só com gmail).
+    is_mesma_empresa = (
+        bool(loc_user)
+        and loc_user.lower() == loc_ticket.lower()
+        and _email_eh_gmail(user) == _email_eh_gmail(ticket.cliente)
+    )
+
+    return (
+        is_dono or is_staff or is_lider or is_owner_assigned
+        or is_iot_suporte or is_mesma_empresa
+    )
+
+
+def _tickets_visiveis_cliente(user: Cliente) -> QuerySet:
+    """Queryset de tickets visíveis para um cliente comum.
+
+    Agrupa por empresa via Cliente.location (match case-insensitive).
+    Contas @gmail são separadas dos clientes corporativos: dentro da mesma
+    location, gmail só enxerga gmail e corporativo só enxerga corporativo.
+    Guard: location vazio/null => vê apenas os próprios tickets.
+    """
+    loc = (user.location or "").strip()
+    if not loc:
+        return Ticket.objects.filter(cliente=user)
+
+    qs = Ticket.objects.filter(cliente__location__iexact=loc)
+    if _email_eh_gmail(user):
+        return qs.filter(cliente__email__iendswith=GMAIL_SUFFIXO)
+    return qs.exclude(cliente__email__iendswith=GMAIL_SUFFIXO)
 
 
 # PÁGINA INICIAL
@@ -70,7 +109,7 @@ def pagina_inicial(request: HttpRequest) -> HttpResponse:
         else:
             qs_tickets = Ticket.objects.none()
     else:
-        qs_tickets = Ticket.objects.filter(cliente=user)
+        qs_tickets = _tickets_visiveis_cliente(user)
 
     # 2. Estatísticas Rápidas
     # Consideramos "Em Aberto" tudo que não está Fechado, Resolvido ou Cancelado
@@ -104,20 +143,22 @@ def ticket_sucesso(request: HttpRequest) -> HttpResponse:
 def meus_tickets(request: HttpRequest) -> HttpResponse:
 
     """
-    Exibe a lista de tickets abertos pelo usuário logado.
+    Lista os tickets visíveis ao usuário: próprios + da mesma empresa (location).
+    Suporta filtro de escopo (todos/meus/equipe), status e busca textual.
     """
 
-    # select_related busca as ForeignKeys numa única query SQL (JOIN)
-    # 1. Mantém a sua busca atual (Exemplo genérico)
-    tickets = Ticket.objects.filter(cliente=request.user).select_related('area', 'ambiente').order_by('-data_criacao')
+    tickets = (
+        _tickets_visiveis_cliente(request.user)
+        .select_related('area', 'ambiente', 'cliente')
+        .order_by('-data_criacao')
+    )
 
-    # 2. Captura dos Filtros via GET
-    status_filter = request.GET.get("status")
+    # Filtros de refinamento (aplicados antes do escopo, para contagem coerente)
+    status_filters = request.GET.getlist("status")
     search_query = request.GET.get("q")
 
-    # 3. Aplicação dos Filtros Opcionais
-    if status_filter:
-        tickets = tickets.filter(status_maximo=status_filter)
+    if status_filters:
+        tickets = tickets.filter(status_maximo__in=status_filters)
 
     if search_query:
         tickets = tickets.filter(
@@ -126,8 +167,19 @@ def meus_tickets(request: HttpRequest) -> HttpResponse:
             | Q(descricao__icontains=search_query)
         )
 
-    # 4. APLICA A PAGINAÇÃO (Limite de 10)
-    paginator = Paginator(tickets, 10) 
+    # Contadores por escopo (sobre o queryset já filtrado por status/busca)
+    count_todos = tickets.count()
+    count_meus = tickets.filter(cliente=request.user).count()
+    count_equipe = count_todos - count_meus
+
+    # Aplica o escopo selecionado
+    escopo = request.GET.get("escopo")
+    if escopo == "meus":
+        tickets = tickets.filter(cliente=request.user)
+    elif escopo == "equipe":
+        tickets = tickets.exclude(cliente=request.user)
+
+    paginator = Paginator(tickets, 10)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
@@ -135,12 +187,16 @@ def meus_tickets(request: HttpRequest) -> HttpResponse:
     request.session['last_meus_tickets_url'] = request.get_full_path()
 
     context = {
-        # Passamos 'page_obj' mas com o nome 'tickets' para não quebrar o loop do HTML
-        "tickets": page_obj, 
+        "tickets": page_obj,
         "status_choices": MAXIMO_STATUS_CHOICES,
         "filtros_atuais": request.GET,
+        "status_selecionados": status_filters,
+        "escopo_atual": escopo or "",
+        "count_todos": count_todos,
+        "count_meus": count_meus,
+        "count_equipe": count_equipe,
     }
-    
+
     return render(request, "tickets/meus_tickets.html", context)
 
 
@@ -357,25 +413,25 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
             messages.warning(request, "Seu usuário não possui um ID Maximo configurado.")
 
     # 4. Captura dos Filtros via GET
-    status_filter = request.GET.get("status")
+    status_filters = request.GET.getlist("status")
     location_filter = request.GET.get("location")
     search_query = request.GET.get("q")
     prioridade_filter = request.GET.get("prioridade")
 
     # Verifica se existe algum filtro de busca/refinamento aplicado (ignorando a paginação)
-    tem_filtros = bool(status_filter or location_filter or search_query or prioridade_filter)
+    tem_filtros = bool(status_filters or location_filter or search_query or prioridade_filter)
 
     # 5. Aplicação dos Filtros Opcionais
-    if status_filter:
-        tickets = tickets.filter(status_maximo=status_filter)
+    if status_filters:
+        tickets = tickets.filter(status_maximo__in=status_filters)
 
     if location_filter:
         tickets = tickets.filter(cliente__location=location_filter)
-    
+
     if prioridade_filter:
         tickets = tickets.filter(prioridade=prioridade_filter)
         # Ignora os tickets críticos que já foram finalizados (a menos que um status específico seja filtrado)
-        if prioridade_filter == "1" and not status_filter:
+        if prioridade_filter == "1" and not status_filters:
             tickets = tickets.exclude(status_maximo__in=['RESOLVED', 'CLOSED', 'CANCELLED'])
 
     if search_query:
@@ -421,6 +477,7 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
         "lista_locations": lista_locations,
         "status_choices": status_choices,
         "filtros_atuais": request.GET,
+        "status_selecionados": status_filters,
         "stats": stats,
         "is_consultor": is_consultor,
         "is_lider": is_lider,
