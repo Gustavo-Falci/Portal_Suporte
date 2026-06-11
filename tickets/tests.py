@@ -2,7 +2,8 @@ from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from unittest.mock import patch
-from .models import Ticket, TicketInteracao, Ambiente, Notificacao
+from .models import Ticket, TicketInteracao, Ambiente, Notificacao, Area
+from .forms import TicketForm
 from .services import MaximoSenderService
 from tickets.views import _tickets_visiveis_cliente, _usuario_tem_acesso_ticket
 
@@ -373,3 +374,34 @@ class MarcarTodasNotificacoesLidasTests(TestCase):
         self.client.login(email="dono@acme.com", password="123")
         resp = self.client.get(reverse("tickets:marcar_todas_notificacoes_lidas"))
         self.assertEqual(resp.status_code, 405)
+
+
+class AreaMultiplosClientesTests(TestCase):
+    """Area aceita múltiplos clientes (M2M) e o TicketForm filtra por vínculo."""
+
+    def setUp(self):
+        # PAMPA está na lista hardcoded empresas_com_area do TicketForm
+        self.ana = Cliente.objects.create_user(
+            email="ana@pampa.com", username="ana", password="123", location="PAMPA"
+        )
+        self.bruno = Cliente.objects.create_user(
+            email="bruno@pampa.com", username="bruno", password="123", location="PAMPA"
+        )
+        self.carla = Cliente.objects.create_user(
+            email="carla@pampa.com", username="carla", password="123", location="PAMPA"
+        )
+        self.area = Area.objects.create(nome_area="Financeiro")
+        self.area.clientes.add(self.ana, self.bruno)
+
+    def test_dois_clientes_vinculados_veem_mesma_area(self):
+        form_ana = TicketForm(user=self.ana)
+        form_bruno = TicketForm(user=self.bruno)
+        self.assertIn(self.area, form_ana.fields["area"].queryset)
+        self.assertIn(self.area, form_bruno.fields["area"].queryset)
+
+    def test_cliente_nao_vinculado_nao_ve_area(self):
+        form_carla = TicketForm(user=self.carla)
+        self.assertNotIn(self.area, form_carla.fields["area"].queryset)
+
+    def test_related_name_areas_preservado(self):
+        self.assertIn(self.area, self.ana.areas.all())

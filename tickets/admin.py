@@ -146,12 +146,18 @@ class AmbienteAdmin(admin.ModelAdmin):
 @admin.register(Area)
 class AreaAdmin(admin.ModelAdmin):
 
-    list_display = ("nome_area", "cliente")
-    # Adicionado busca pelo cliente também
-    search_fields = ("nome_area", "cliente__username")
+    list_display = ("nome_area", "get_clientes_vinculados")
+    search_fields = ("nome_area", "clientes__username")
 
-    list_select_related = ("cliente",)
-    autocomplete_fields = ["cliente"]
+    autocomplete_fields = ["clientes"]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("clientes")
+
+    def get_clientes_vinculados(self, obj):
+        return ", ".join([c.username for c in obj.clientes.all()])
+
+    get_clientes_vinculados.short_description = "Clientes Vinculados"
 
 
 @admin.register(TicketInteracao)

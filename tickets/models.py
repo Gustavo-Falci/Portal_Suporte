@@ -116,7 +116,11 @@ class Ambiente(models.Model):
 
 class Area(models.Model):
 
-    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="areas")
+    clientes = models.ManyToManyField(
+        Cliente,
+        related_name="areas",
+        verbose_name="Clientes com acesso",
+    )
     nome_area = models.CharField(max_length=100)
 
     def __str__(self):
