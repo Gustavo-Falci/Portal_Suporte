@@ -10,13 +10,16 @@
     
     <div class="container mt-4 mb-4">
         
-        <div class="d-flex justify-content-between align-items-end mb-5">
-            <div>
-                <h1 class="h3 fw-bold mb-1">Olá, {{ primeiro_nome }}!</h1>
+        <div class="d-flex justify-content-between align-items-end gap-3 mb-5">
+            <div style="min-width: 0;">
+                <h1 class="h3 fw-bold mb-1 text-truncate">Olá, {{ primeiro_nome }}!</h1>
                 <p class="text-muted mb-0">Visão geral dos seus chamados.</p>
             </div>
-            <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-primary shadow-sm px-4 py-2">
+            <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-primary shadow-sm px-4 py-2 d-none d-md-inline-block">
                 <i class="fa-solid fa-plus me-2"></i>Novo Ticket
+            </a>
+            <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-primary shadow-sm btn-icon-square d-md-none align-self-start" aria-label="Novo Ticket" title="Novo Ticket">
+                <i class="fa-solid fa-plus"></i>
             </a>
         </div>
 
@@ -67,7 +70,7 @@
         </div>
 
         <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white py-3 border-bottom-0 d-flex justify-content-between align-items-center">
+            <div class="card-header bg-white py-3 border-bottom-0 d-flex justify-content-between align-items-center gap-3">
                 <h5 class="mb-0 fw-bold h6"><i class="fa-solid fa-list-ul me-2 text-primary"></i>
                     {% if user.is_consultor and not user.is_support_team and not user.is_lider_suporte %}
                         Últimos tickets atribuídos
@@ -78,10 +81,10 @@
                     {% endif %}
                 </h5>
                 {% if user.is_superuser or not user.is_support_team and not user.is_consultor and not user.is_lider_suporte %}
-                <a href="{% url 'tickets:meus_tickets' %}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">Ver Todos</a>
+                <a href="{% url 'tickets:meus_tickets' %}" class="btn btn-sm btn-outline-secondary rounded-pill px-3 text-nowrap flex-shrink-0">Ver Todos</a>
                 {% endif %}
                 {% if user.is_support_team or user.is_consultor or user.is_lider_suporte %}
-                <a href="{% url 'tickets:fila_atendimento' %}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">Ver Todos</a>
+                <a href="{% url 'tickets:fila_atendimento' %}" class="btn btn-sm btn-outline-secondary rounded-pill px-3 text-nowrap flex-shrink-0">Ver Todos</a>
                 {% endif %}
             </div>
             <div class="card-body p-0">
@@ -117,7 +120,7 @@
                                     </small>
                                 </td>
                                 <td>
-                                    <span class="badge {{ ticket.badge_class }} rounded-0 mb-2 w-50 text-truncate">
+                                    <span class="badge {{ ticket.badge_class }} rounded-0">
                                         {{ ticket.get_status_maximo_display }}
                                     </span>
                                 </td>

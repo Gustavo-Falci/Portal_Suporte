@@ -298,3 +298,152 @@ body {
     font-size: 0.9rem;
     background-color: #525252 !important; /* IBM Gray 70 */
 }
+
+/* ===================================
+   Responsividade Mobile
+   =================================== */
+
+/* Logo do navbar: 100px desktop, 56px mobile */
+.navbar-logo {
+    height: 100px;
+    width: auto;
+}
+
+/* Espaçamento do conteúdo abaixo do navbar fixo */
+.main-content {
+    padding-top: 125px;
+}
+
+/* Dropdown de notificações: nunca estoura a viewport */
+.notif-dropdown {
+    width: min(400px, calc(100vw - 1rem));
+    max-height: min(400px, calc(100vh - 100px));
+    overflow-y: auto;
+}
+
+@media (max-width: 991.98px) {
+    .navbar-logo {
+        height: 56px;
+    }
+
+    .main-content {
+        padding-top: 80px;
+    }
+
+    /* Dropdown de notificações vira overlay fixo abaixo do navbar
+       (sobrescreve o posicionamento inline do Popper) */
+    .notif-dropdown {
+        position: fixed !important;
+        inset: 80px 0.5rem auto 0.5rem !important;
+        transform: none !important;
+        width: auto;
+        max-height: calc(100vh - 96px);
+    }
+
+    /* Touch target ≥ 44px nos itens de filtro com checkbox */
+    .dropdown-menu label.dropdown-item {
+        min-height: 44px;
+        padding-top: 0.6rem;
+        padding-bottom: 0.6rem;
+    }
+}
+
+/* Coluna de status do card da fila: altura mínima só no desktop */
+@media (min-width: 768px) {
+    .ticket-status-col {
+        min-height: 100px;
+    }
+
+    .ticket-status-col .badge {
+        width: 100%;
+    }
+
+    /* Divisória da coluna do cliente só faz sentido lado a lado */
+    .border-md-start {
+        border-left: 1px solid #dee2e6;
+    }
+}
+
+/* Stats da fila mais compactos no mobile, ocupando a largura toda */
+@media (max-width: 767.98px) {
+    .stats-fila {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .stats-fila .fs-4 {
+        font-size: 1.1rem !important;
+    }
+}
+
+/* Larguras da tabela de meus tickets: só em md+ */
+@media (min-width: 768px) {
+    .th-ticket-id { width: 200px; }
+    .th-ticket-criador { width: 180px; }
+    .th-ticket-data { width: 200px; }
+    .th-ticket-status { width: 120px; }
+    .th-ticket-acao { width: 200px; }
+}
+
+/* Select customizável: picker ancorado abre para baixo (Chrome/Edge;
+   navegadores sem suporte mantêm o picker nativo) */
+select.form-select,
+select.form-select::picker(select) {
+    appearance: base-select;
+}
+
+select.form-select::picker(select) {
+    border: 1px solid #8d8d8d;
+    border-radius: 0;
+    background: var(--ibm-white);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Esconde a seta própria do base-select (o chevron do Bootstrap já existe) */
+select.form-select::picker-icon {
+    display: none;
+}
+
+select.form-select option {
+    padding: 0.65rem 1rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9rem;
+}
+
+select.form-select option:checked {
+    background-color: var(--ibm-gray-10);
+}
+
+select.form-select option:hover {
+    background-color: #e5f6ff;
+}
+
+/* Botão compacto no mobile (o .btn global infla o padding dos .btn-sm) */
+@media (max-width: 767.98px) {
+    .btn-compact-mobile {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.75rem;
+        white-space: nowrap;
+    }
+}
+
+/* Botão quadrado só com ícone (ex.: Novo Ticket no mobile) */
+.btn-icon-square {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Sumário do ticket na tabela: trunca sem estourar a viewport no mobile */
+.ticket-sumario {
+    max-width: 500px;
+}
+
+@media (max-width: 767.98px) {
+    .ticket-sumario {
+        max-width: 40vw;
+    }
+}
