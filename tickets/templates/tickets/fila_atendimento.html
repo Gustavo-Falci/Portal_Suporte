@@ -6,7 +6,7 @@
 {% block content %}
 <div class="container-fluid px-4 py-4" style="max-width: 1200px; margin: 0 auto;">
     
-    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 border-bottom pb-3">
         <div>
             <h2 class="h4 mb-1 fw-bold font-monospace">
                 {% if is_consultor and not user.is_support_team %}
@@ -17,7 +17,7 @@
             </h2>
             <p class="text-muted mb-0 small">Gerenciamento centralizado de solicitações</p>
         </div>
-        <div class="d-flex gap-3">
+        <div class="d-flex gap-3 stats-fila">
             <div class="text-end">
                 <span class="d-block text-muted" style="font-size: 0.7rem;">FILTRADOS</span>
                 <span class="fs-4 fw-bold font-monospace">{{ stats.total }}</span>
@@ -35,6 +35,13 @@
         </div>
     </div>
 
+    <button class="btn btn-outline-secondary rounded-0 w-100 mb-3 d-md-none d-flex justify-content-between align-items-center" type="button"
+            data-bs-toggle="collapse" data-bs-target="#filtrosCollapse" aria-expanded="{% if tem_filtros %}true{% else %}false{% endif %}" aria-controls="filtrosCollapse">
+        <span><i class="bi bi-funnel me-1"></i> Filtros{% if tem_filtros %} (ativos){% endif %}</span>
+        <i class="bi bi-chevron-down"></i>
+    </button>
+
+    <div class="collapse d-md-block {% if tem_filtros %}show{% endif %}" id="filtrosCollapse">
     <div class="card bg-light border-0 mb-4 rounded-0 shadow-sm">
         <div class="card-body p-3">
             <form method="get" class="row g-2 align-items-end">
@@ -79,7 +86,7 @@
                             {% for code, label in status_choices %}
                             <li>
                                 <label class="dropdown-item d-flex align-items-center gap-2 px-2">
-                                    <input type="checkbox" name="status" value="{{ code }}"
+                                    <input type="checkbox" class="form-check-input" name="status" value="{{ code }}"
                                            {% if code in status_selecionados %}checked{% endif %}>
                                     {{ label }}
                                 </label>
@@ -102,6 +109,7 @@
             </form>
         </div>
     </div>
+    </div>
 
     {% if tickets %}
         <div class="d-flex flex-column gap-3">
@@ -110,8 +118,8 @@
                 <div class="card-body p-2">
                     <div class="row g-0 align-items-center">
                         
-                        <div class="col-md-1 bg-transparent d-flex flex-column align-items-center justify-content-center p-3 text-center" style="min-height: 100px;">
-                            <span class="badge {{ ticket.badge_class }} rounded-0 mb-2 w-100 text-truncate">
+                        <div class="col-md-1 bg-transparent d-flex flex-row flex-md-column align-items-center justify-content-start justify-content-md-center gap-2 p-3 text-center ticket-status-col">
+                            <span class="badge {{ ticket.badge_class }} rounded-0 mb-0 mb-md-2 text-truncate">
                                 {{ ticket.get_status_maximo_display }}
                             </span>
                             {% if ticket.maximo_id %}
@@ -123,7 +131,7 @@
                             {% endif %}
                             
                             {% if ticket.prioridade == 1 or ticket.prioridade == '1' %}
-                                <i class="bi bi-exclamation-triangle-fill text-danger mt-2" title="Prioridade Crítica"></i>
+                                <i class="bi bi-exclamation-triangle-fill text-danger mt-md-2" title="Prioridade Crítica"></i>
                             {% endif %}
                         </div>
                         
@@ -171,7 +179,7 @@
 
                                 {% if ticket.prioridade == 1 or ticket.prioridade == '1' %}
                                 <div class="text-end ms-3">
-                                    <span class="badge bg-danger rounded-0" title="Criticidade" style="font-size: 0.75rem; letter-spacing: 0.5px; margin-right: 4rem;">
+                                    <span class="badge bg-danger rounded-0" title="Criticidade" style="font-size: 0.75rem; letter-spacing: 0.5px;">
                                         CRÍTICO
                                     </span>
                                 </div>
@@ -179,21 +187,24 @@
                             </div>
                         </div>
 
-                        <div class="col-md-3 p-3 border-start">
+                        <div class="col-md-3 p-3 border-md-start">
                             <div class="d-flex align-items-center">
                                 <div class="avatar-circle bg-secondary text-white me-2 d-flex justify-content-center align-items-center fw-bold" style="width: 40px; height: 40px; border-radius: 50%;">
                                     {{ ticket.cliente.username|slice:":2"|upper }}
                                 </div>
-                                <div style="overflow: hidden;">
+                                <div class="flex-grow-1" style="overflow: hidden;">
                                     <span class="d-block fw-bold text-truncate text-uppercase font-monospace" style="font-size: 0.85rem;">
                                         {{ ticket.cliente.get_full_name|default:ticket.cliente.username }}
                                     </span>
-                                    <span class="d-block text-muted small text-truncate">
+                                    <span class="d-none d-md-block text-muted small text-truncate">
                                         {{ ticket.cliente.email }}
                                     </span>
                                 </div>
+                                <a href="{% url 'tickets:detalhe_ticket' ticket.pk %}?origin=fila" class="btn btn-sm btn-outline-primary rounded-0 text-uppercase fw-bold btn-compact-mobile flex-shrink-0 ms-2 d-md-none">
+                                    Atender <i class="bi bi-arrow-right ms-1"></i>
+                                </a>
                             </div>
-                            <div class="mt-3 text-end">
+                            <div class="mt-3 text-end d-none d-md-block">
                                 <a href="{% url 'tickets:detalhe_ticket' ticket.pk %}?origin=fila" class="btn btn-sm btn-outline-primary rounded-0 text-uppercase fw-bold">
                                     Atender <i class="bi bi-arrow-right ms-1"></i>
                                 </a>
@@ -207,14 +218,14 @@
         </div>
 
         {% if tickets.has_other_pages %}
-        <div class="d-flex justify-content-between align-items-center mt-4 mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mt-4 mb-4">
             
             <small class="text-muted">
                 Mostrando {{ tickets.start_index }} a {{ tickets.end_index }} de {{ tickets.paginator.count }} tickets
             </small>
 
             <nav aria-label="Navegação de tickets">
-                <ul class="pagination justify-content-end mb-0">
+                <ul class="pagination justify-content-center justify-content-md-end mb-0">
                     
                     {% if tickets.has_previous %}
                         <li class="page-item">

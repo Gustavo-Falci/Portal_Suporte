@@ -1,0 +1,70 @@
+<a class="nav-link text-white position-relative" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+    <i class="fa-solid fa-bell fa-lg"></i>
+
+    {% if notificacoes_count > 0 %}
+    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-light" style="font-size: 0.6rem;">
+        {{ notificacoes_count }}
+        <span class="visually-hidden">notificações não lidas</span>
+    </span>
+    {% endif %}
+</a>
+
+<ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-0 notif-dropdown">
+    <li><h6 class="dropdown-header text-uppercase fw-bold">Notificações</h6></li>
+
+    {% if notificacoes_count > 0 %}
+    <li>
+        <form method="post" action="{% url 'tickets:marcar_todas_notificacoes_lidas' %}" class="px-3 py-2 mb-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-link text-decoration-none w-100">
+                <i class="bi bi-check2-all me-1"></i>Marcar todas como lidas
+            </button>
+        </form>
+    </li>
+    <li><hr class="dropdown-divider my-0"></li>
+    {% endif %}
+
+    {% if notificacoes_list %}
+        {% for notif in notificacoes_list %}
+        <li>
+            <a class="dropdown-item p-3 border-bottom {% if not notif.lida %}bg-light{% endif %}"
+            href="{% url 'tickets:marcar_notificacao_lida' notif.id %}">
+
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong class="text-primary font-monospace" style="font-size: 0.85rem;">
+                        {% if notif.tipo == 'mensagem' %}
+                            <i class="bi bi-chat-left-text-fill me-1"></i>
+                        {% elif notif.tipo == 'status' %}
+                            <i class="bi bi-arrow-repeat me-1"></i>
+                        {% else %}
+                            <i class="bi bi-info-circle-fill me-1"></i>
+                        {% endif %}
+                        {{ notif.titulo }}
+                    </strong>
+                    <small class="text-muted" style="font-size: 0.75rem;">{{ notif.data_criacao|timesince }}</small>
+                </div>
+
+                <p class="mb-1 text-secondary text-truncate" style="font-size: 0.8rem; max-width: 250px;">
+                    {{ notif.mensagem }}
+                </p>
+
+                {% if notif.ticket %}
+                <div class="mt-1">
+                    <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 rounded-1" style="font-size: 0.75rem; font-weight: normal;">
+                        Ticket #{{ notif.ticket.maximo_id|default:notif.ticket.id }}
+                    </span>
+                    {% if not notif.lida %}
+                        <span class="d-inline-block bg-danger rounded-circle ms-1" style="width: 6px; height: 6px;"></span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </a>
+        </li>
+        {% endfor %}
+    {% else %}
+        <li class="p-3 text-center text-muted small">
+            <i class="bi bi-bell-slash d-block fs-4 mb-2"></i>
+            Sem novas notificações
+        </li>
+    {% endif %}
+</ul>

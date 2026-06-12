@@ -55,7 +55,7 @@
                             {% for key, value in status_choices %}
                             <li>
                                 <label class="dropdown-item d-flex align-items-center gap-2 px-2">
-                                    <input type="checkbox" name="status" value="{{ key }}"
+                                    <input type="checkbox" class="form-check-input" name="status" value="{{ key }}"
                                            {% if key in status_selecionados %}checked{% endif %}>
                                     {{ value }}
                                 </label>
@@ -100,17 +100,17 @@
                 <table class="table table-hover mb-0 align-middle" style="font-family: 'IBM Plex Mono', monospace;">
                     <thead class="table-light">
                         <tr>
-                            <th scope="col" class="py-3 ps-4" style="width: 200px;">ID</th>
-                            <th scope="col" class="py-3" style="width: auto;">Descrição</th>
-                            <th scope="col" class="py-3" style="width: 180px;">Criado por</th>
-                            <th scope="col" class="py-3" style="width: 200px;">Aberto em</th>
-                            <th scope="col" class="py-3" style="width: 120px;">Status</th>
-                            <th scope="col" class="text-end pe-4 py-3" style="width: 200px;"></th>
+                            <th scope="col" class="py-3 ps-4 th-ticket-id">ID</th>
+                            <th scope="col" class="py-3">Descrição</th>
+                            <th scope="col" class="py-3 th-ticket-criador d-none d-md-table-cell">Criado por</th>
+                            <th scope="col" class="py-3 th-ticket-data d-none d-md-table-cell">Aberto em</th>
+                            <th scope="col" class="py-3 th-ticket-status">Status</th>
+                            <th scope="col" class="text-end pe-4 py-3 th-ticket-acao"></th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for ticket in tickets %}
-                        <tr id="ticket-{{ ticket.pk }}" style="scroll-margin-top: 100px; {% if ticket.cliente_id == request.user.id %}border-left: 3px solid var(--ibm-blue-60);{% endif %}">
+                        <tr id="ticket-{{ ticket.pk }}" data-href="{% url 'tickets:detalhe_ticket' ticket.id %}?origin=meus" style="cursor: pointer; scroll-margin-top: 100px; {% if ticket.cliente_id == request.user.id %}border-left: 3px solid var(--ibm-blue-60);{% endif %}">
                             <td class="ps-4">
                                 {% if ticket.maximo_id %}
                                     <span class="badge bg-light text-dark border font-monospace">
@@ -124,11 +124,11 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <span class="d-inline-block text-truncate" style="max-width: 500px;" title="{{ ticket.sumario }}">
+                                <span class="d-inline-block text-truncate ticket-sumario" title="{{ ticket.sumario }}">
                                     {{ ticket.sumario }}
                                 </span>
                             </td>
-                            <td>
+                            <td class="d-none d-md-table-cell">
                                 {% if ticket.cliente_id == request.user.id %}
                                     <span class="badge rounded-0 fw-normal px-2 py-1" style="background-color: var(--ibm-blue-60); color: #fff;">Você</span>
                                 {% else %}
@@ -137,15 +137,18 @@
                                     </span>
                                 {% endif %}
                             </td>
-                            <td>{{ ticket.data_criacao|date:"d/m/Y H:i" }}</td>
+                            <td class="d-none d-md-table-cell">{{ ticket.data_criacao|date:"d/m/Y H:i" }}</td>
                             <td>
                                 <span class="badge {{ ticket.badge_class }} rounded-0 fw-normal px-2 py-1">
                                     {{ ticket.get_status_maximo_display }}
                                 </span>
                             </td>
                             <td class="text-end pe-4">
-                                <a href="{% url 'tickets:detalhe_ticket' ticket.id %}?origin=meus" class="btn btn-sm btn-outline-dark rounded-0" title="Ver detalhes do chamado">
+                                <a href="{% url 'tickets:detalhe_ticket' ticket.id %}?origin=meus" class="btn btn-sm btn-outline-dark rounded-0 d-none d-md-inline-block" title="Ver detalhes do chamado">
                                     Ver Detalhes
+                                </a>
+                                <a href="{% url 'tickets:detalhe_ticket' ticket.id %}?origin=meus" class="d-md-none text-muted" aria-label="Ver detalhes do chamado">
+                                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
                                 </a>
                             </td>
                         </tr>
@@ -167,7 +170,7 @@
             </div>
         </div>
 
-        <div class="card-footer bg-white border-top py-3 px-4 d-flex justify-content-between align-items-center">
+        <div class="card-footer bg-white border-top py-3 px-4 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
             
             <small class="text-muted">
                 Mostrando {{ tickets.start_index }} a {{ tickets.end_index }} de {{ tickets.paginator.count }} registros
@@ -221,4 +224,15 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("tr[data-href]").forEach(function (row) {
+        row.addEventListener("click", function (e) {
+            if (e.target.closest("a, button, input, label")) return;
+            window.location.href = row.dataset.href;
+        });
+    });
+});
+</script>
 {% endblock %}
