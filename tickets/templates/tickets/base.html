@@ -68,7 +68,19 @@
 
                         <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-0" style="width: 400px; max-height: 400px; overflow-y: auto;">
                             <li><h6 class="dropdown-header text-uppercase fw-bold">Notificações</h6></li>
-                            
+
+                            {% if notificacoes_count > 0 %}
+                            <li>
+                                <form method="post" action="{% url 'tickets:marcar_todas_notificacoes_lidas' %}" class="px-3 py-2 mb-0">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-link text-decoration-none w-100">
+                                        <i class="bi bi-check2-all me-1"></i>Marcar todas como lidas
+                                    </button>
+                                </form>
+                            </li>
+                            <li><hr class="dropdown-divider my-0"></li>
+                            {% endif %}
+
                             {% if notificacoes_list %}
                                 {% for notif in notificacoes_list %}
                                 <li>
@@ -111,18 +123,6 @@
                                     <i class="bi bi-bell-slash d-block fs-4 mb-2"></i>
                                     Sem novas notificações
                                 </li>
-                            {% endif %}
-
-                            {% if notificacoes_count > 0 %}
-                            <li><hr class="dropdown-divider my-0"></li>
-                            <li>
-                                <form method="post" action="{% url 'tickets:marcar_todas_notificacoes_lidas' %}" class="px-3 py-2 mb-0">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-sm btn-link text-decoration-none w-100">
-                                        <i class="bi bi-check2-all me-1"></i>Marcar todas como lidas
-                                    </button>
-                                </form>
-                            </li>
                             {% endif %}
                         </ul>
                     </li>
