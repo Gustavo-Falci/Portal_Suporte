@@ -1,14 +1,18 @@
+import logging
 import os
 import boto3
 from botocore.config import Config
 from django.core.management.base import BaseCommand
 from django.conf import settings
 
+logger = logging.getLogger(__name__)
+
 class Command(BaseCommand):
     help = 'Sincroniza a pasta media local com o Oracle Cloud Object Storage (OCI)'
 
     def handle(self, *args, **kwargs):
         self.stdout.write(self.style.SUCCESS("--- INICIANDO MIGRAÇÃO PARA ORACLE CLOUD ---"))
+        logger.info("Início sincronização media -> OCI")
 
         # --- A CORREÇÃO MÁGICA PARA A ORACLE CLOUD ---
         os.environ['AWS_REQUEST_CHECKSUM_CALCULATION'] = 'when_required'
@@ -88,3 +92,4 @@ class Command(BaseCommand):
         self.stdout.write(f"Total de arquivos migrados: {arquivos_enviados}")
         if arquivos_com_erro > 0:
             self.stdout.write(self.style.WARNING(f"Arquivos que falharam: {arquivos_com_erro}"))
+        logger.info("Fim sincronização media -> OCI")

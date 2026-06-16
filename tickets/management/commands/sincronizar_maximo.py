@@ -52,6 +52,7 @@ class Command(BaseCommand):
         }
 
         self.stdout.write("--- Iniciando Sincronização (Modo Debug) ---")
+        logger.info("Início sincronização Maximo")
 
         try:
             verify_ssl = getattr(settings, 'MAXIMO_VERIFY_SSL', True)
@@ -70,6 +71,7 @@ class Command(BaseCommand):
             
             if not items:
                 self.stdout.write("API Maximo retornou lista vazia ou nenhum ticket encontrado.")
+                logger.info("Fim sincronização Maximo: API retornou lista vazia")
                 return
 
             self.processar_tickets(items)
@@ -145,7 +147,8 @@ class Command(BaseCommand):
                     self.stdout.write(f"Ticket #{ticket.id} [ATUALIZADO] SR {mx_id}")
 
         msg_final = f"Sincronização concluída. Novos Vínculos: {total_vinculados} | Tickets Alterados: {total_alterados}"
-        
+        logger.info(f"Fim sincronização Maximo: {msg_final}")
+
         if total_vinculados > 0 or total_alterados > 0:
             self.stdout.write(self.style.SUCCESS(msg_final))
         else:

@@ -1,10 +1,33 @@
+import logging
+
 from django.db.models.signals import pre_save, post_save
+from django.contrib.auth.signals import (
+    user_logged_in,
+    user_logged_out,
+    user_login_failed,
+)
 from django.dispatch import receiver
 from .models import Ticket
 from .services import NotificationService
-import logging
+from . import audit
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(user_logged_in)
+def log_login(sender, request, user, **kwargs):
+    audit.registrar(user, "efetuou login")
+
+
+@receiver(user_logged_out)
+def log_logout(sender, request, user, **kwargs):
+    audit.registrar(user, "efetuou logout")
+
+
+@receiver(user_login_failed)
+def log_login_falha(sender, credentials, request, **kwargs):
+    email = credentials.get("username") or credentials.get("email") or "?"
+    audit.registrar(None, f"falha de login para {email}")
 
 
 @receiver(pre_save, sender=Ticket)

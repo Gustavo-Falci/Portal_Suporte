@@ -1,11 +1,64 @@
-from django.test import TestCase, Client
+import logging
+from django.test import TestCase, Client, SimpleTestCase, RequestFactory
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.urls import reverse
 from unittest.mock import patch
 from .models import Ticket, TicketInteracao, Ambiente, Notificacao, Area
 from .forms import TicketForm
 from .services import MaximoSenderService
 from tickets.views import _tickets_visiveis_cliente, _usuario_tem_acesso_ticket
+from tickets.middleware import RequestLogMiddleware
+from tickets import audit
+
+
+class AuditHelperTest(SimpleTestCase):
+    def test_registrar_formata_usuario_e_acao(self):
+        class FakeUser:
+            username = "gu.falci"
+        with self.assertLogs("portal.audit", level="INFO") as cm:
+            audit.registrar(FakeUser(), "criou Ticket #1234")
+        self.assertIn("user=gu.falci criou Ticket #1234", cm.output[0])
+
+    def test_registrar_usuario_anonimo(self):
+        with self.assertLogs("portal.audit", level="INFO") as cm:
+            audit.registrar(None, "acao qualquer")
+        self.assertIn("user=anon acao qualquer", cm.output[0])
+
+
+class RequestLogMiddlewareTest(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _run(self, request):
+        mw = RequestLogMiddleware(lambda req: __import__("django.http", fromlist=["HttpResponse"]).HttpResponse(status=200))
+        return mw(request)
+
+    def test_loga_request_normal(self):
+        request = self.factory.get("/meus-tickets/")
+        request.user = AnonymousUser()
+        with self.assertLogs("portal.http", level="INFO") as cm:
+            self._run(request)
+        linha = cm.output[0]
+        self.assertIn("GET", linha)
+        self.assertIn("/meus-tickets/", linha)
+        self.assertIn("anon", linha)
+        self.assertIn("200", linha)
+
+    def test_ignora_estaticos(self):
+        request = self.factory.get("/static/css/app.css")
+        request.user = AnonymousUser()
+        with self.assertRaisesMessage(AssertionError, "no logs"):
+            with self.assertLogs("portal.http", level="INFO"):
+                self._run(request)
+
+    def test_nao_vaza_dados_sensiveis(self):
+        request = self.factory.post("/login/", data={"password": "segredo123"})
+        request.user = AnonymousUser()
+        with self.assertLogs("portal.http", level="INFO") as cm:
+            self._run(request)
+        self.assertNotIn("segredo123", cm.output[0])
+        self.assertNotIn("password", cm.output[0])
 
 Cliente = get_user_model()
 

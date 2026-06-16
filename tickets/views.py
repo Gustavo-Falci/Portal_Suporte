@@ -24,6 +24,7 @@ import os
 import threading
 
 logger = logging.getLogger(__name__)
+from . import audit
 
 
 # Sufixo de email tratado como conta genérica (não-cliente corporativo).
@@ -208,7 +209,11 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                     if anexos_upload:
                         for arquivo_temp in anexos_upload:
                             TicketAnexo.objects.create(ticket=ticket, arquivo=arquivo_temp)
-                
+
+                # Ticket persistido — registra criação na trilha de auditoria
+                # (independente do resultado do envio de e-mail abaixo)
+                audit.registrar(request.user, f"criou Ticket #{ticket.id}")
+
                 # Resgatamos os ficheiros seguros e guardados da base de dados
                 todos_anexos = []
                 
@@ -285,6 +290,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
                 interacao.anexo = arquivo_recebido
 
             interacao.save()
+            audit.registrar(request.user, f"adicionou interação ao Ticket #{ticket.id}")
 
             interacao_salva = TicketInteracao.objects.get(id=interacao.id)
             
@@ -489,6 +495,7 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
     try:
+        audit.registrar(request.user, f"baixou anexo da interação #{interacao.id} (Ticket #{ticket.id})")
         if getattr(settings, 'USE_S3', False):
             # O sistema pergunta ao Storage se o arquivo caiu no disco local por falha da nuvem
             if hasattr(interacao.anexo.storage, 'is_local') and interacao.anexo.storage.is_local(interacao.anexo.name):
@@ -533,6 +540,7 @@ def marcar_notificacao_lida(request: Any, notificacao_id: int) -> Any:
     if notificacao.destinatario == request.user and not notificacao.lida:
         notificacao.lida = True
         notificacao.save()
+        audit.registrar(request.user, f"marcou notificação #{notificacao.id} como lida")
 
     if notificacao.ticket:
         return redirect("tickets:detalhe_ticket", pk=notificacao.ticket.pk)
@@ -548,6 +556,7 @@ def marcar_notificacao_lida(request: Any, notificacao_id: int) -> Any:
 def marcar_todas_notificacoes_lidas(request: HttpRequest) -> HttpResponse:
     """Marca todas as notificações não-lidas do usuário como lidas (bulk)."""
     Notificacao.objects.filter(destinatario=request.user, lida=False).update(lida=True)
+    audit.registrar(request.user, "marcou todas notificações como lidas")
 
     referer = request.META.get("HTTP_REFERER")
     if referer and url_has_allowed_host_and_scheme(
