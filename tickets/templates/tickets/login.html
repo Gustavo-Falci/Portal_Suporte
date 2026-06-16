@@ -166,7 +166,8 @@
 
                     <form method="post" id="loginForm">
                         {% csrf_token %}
-                        
+                        <input type="hidden" name="next" value="{{ next }}">
+
                         <div class="form-floating mb-3">
                             <input type="email" name="username" class="form-control rounded-3 {% if form.errors %}is-invalid{% endif %}" id="floatingEmail" placeholder="nome@exemplo.com">
                             <label for="floatingEmail" class="text-muted"><i class="fa-regular fa-envelope me-2"></i>E-mail corporativo</label>

@@ -557,6 +557,23 @@ def marcar_todas_notificacoes_lidas(request: HttpRequest) -> HttpResponse:
     return redirect("tickets:pagina_inicial")
 
 
+def _get_next_url(request: HttpRequest) -> str | None:
+    """
+    Recupera o destino pós-login (parâmetro 'next') de forma segura.
+
+    Valida host/esquema para evitar open redirect. Retorna None se ausente
+    ou inválido.
+    """
+    nxt = request.POST.get("next") or request.GET.get("next")
+    if nxt and url_has_allowed_host_and_scheme(
+        nxt,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return nxt
+    return None
+
+
 def login_view(request: HttpRequest) -> HttpResponse:
 
     """
@@ -564,7 +581,7 @@ def login_view(request: HttpRequest) -> HttpResponse:
     """
 
     if request.user.is_authenticated:
-        return redirect("tickets:pagina_inicial")
+        return redirect(_get_next_url(request) or "tickets:pagina_inicial")
 
     form = EmailAuthenticationForm(request, data=request.POST or None)
     form_troca_senha = None
@@ -600,7 +617,8 @@ def login_view(request: HttpRequest) -> HttpResponse:
                 
                 messages.success(request, "Senha definida com sucesso! Bem-vindo ao portal.")
 
-                return redirect("tickets:pagina_inicial")
+                next_url = request.session.pop('next_url', None)
+                return redirect(next_url or "tickets:pagina_inicial")
 
         elif form.is_valid():
             user = form.get_user()
@@ -610,23 +628,25 @@ def login_view(request: HttpRequest) -> HttpResponse:
             if user.precisa_trocar_senha:
                 request.session['user_id_troca_senha'] = user.id
                 request.session['remember_me_pending'] = remember_me
+                request.session['next_url'] = _get_next_url(request)
                 form_troca_senha = SetPasswordForm(user)
 
             else:
                 auth_login(request, user, backend='tickets.backend.EmailBackend')
-                
+
                 if remember_me:
                     request.session.set_expiry(1209600)
 
                 else:
                     request.session.set_expiry(0)
 
-                return redirect("tickets:pagina_inicial")
+                return redirect(_get_next_url(request) or "tickets:pagina_inicial")
 
     context = {
         "form": form,
         "form_troca_senha": form_troca_senha,
-        "is_troca_senha": bool(form_troca_senha)
+        "is_troca_senha": bool(form_troca_senha),
+        "next": _get_next_url(request) or "",
     }
     
     return render(request, "tickets/login.html", context)
