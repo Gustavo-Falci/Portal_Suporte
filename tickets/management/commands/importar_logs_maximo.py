@@ -22,7 +22,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.stdout.write("--- Iniciando Importação de Logs do Maximo ---")
-        
+        logger.info("Início importação de worklogs Maximo")
+
         # 2. Configurar Sessão HTTP (SSL Desativado e Sem Proxy)
         retry_strategy = Retry(
             total=3, 
@@ -85,6 +86,7 @@ class Command(BaseCommand):
                 self.stderr.write(f"Erro no ticket {ticket.maximo_id}: {e}")
 
         self.stdout.write(self.style.SUCCESS(f"--- Fim. Total importado: {total_importado} ---"))
+        logger.info("Fim importação de worklogs Maximo")
 
     def _get_system_user(self):
         """Cria ou recupera o usuário robô"""
