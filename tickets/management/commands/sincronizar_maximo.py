@@ -4,6 +4,8 @@ import sys
 import requests
 import logging
 from requests.adapters import HTTPAdapter, Retry
+from datetime import datetime, timedelta
+from django.utils import timezone
 
 # 1. Setup do Ambiente (Caso rode via Crontab/Script direto)
 sys.path.append('/home/ubuntu/portal_suporte/tickets/management/commands/sincronizar_maximo.py')
@@ -16,6 +18,9 @@ from tickets.models import Ticket
 
 # Configuração de Log
 logger = logging.getLogger(__name__)
+
+# Guarda de match por texto
+MATCH_BUFFER = timedelta(minutes=5)          # tolera clock skew portal<->Maximo
 
 class Command(BaseCommand):
     help = 'Sincroniza status, ID e OWNER dos tickets com o IBM Maximo'
@@ -43,7 +48,7 @@ class Command(BaseCommand):
         params = {
             "_dropnulls": 0,
             "lean": 1,
-            "oslc.select": "TICKETID,DESCRIPTION,STATUS,OWNER", 
+            "oslc.select": "TICKETID,DESCRIPTION,STATUS,OWNER,REPORTDATE",
         }
 
         headers = {
@@ -102,8 +107,8 @@ class Command(BaseCommand):
 
         for item in items:
             mx_id = str(item.get('ticketid', ''))
-            mx_desc_raw = item.get('description', '')
-            mx_desc_clean = mx_desc_raw.strip().lower()
+            mx_desc_clean = item.get('description', '').strip().lower()
+            mx_reportdate = self._parse_maximo_date(item.get('reportdate'))
 
             if not mx_id:
                 continue
@@ -111,33 +116,39 @@ class Command(BaseCommand):
             tickets_para_processar = []
 
             if mx_id in tickets_por_id:
+                # Já vinculado: atualiza sempre (inclusive fechamento legítimo)
                 tickets_para_processar.append(tickets_por_id[mx_id])
-            
+
+            # Descoberta por texto (ticket sem maximo_id vinculado)
             else:
                 matches_encontrados = []
-                
-                # Iteramos sobre uma cópia ou cuidamos na remoção
-                for t_local in list(tickets_sem_id): 
+
+                for t_local in list(tickets_sem_id):
                     local_sumario_clean = t_local.sumario.strip().lower()
-                    
-                    match_exato = (local_sumario_clean == mx_desc_clean)
-                    # Aumentei o filtro parcial para evitar falsos positivos em palavras curtas
-                    match_parcial = (len(local_sumario_clean) > 10 and local_sumario_clean in mx_desc_clean)
 
-                    if match_exato or match_parcial:
-                        matches_encontrados.append(t_local)
-                        tipo_match = "EXATO" if match_exato else "PARCIAL"
-                        self.stdout.write(self.style.SUCCESS(f"MATCH {tipo_match} ENCONTRADO para SR {mx_id}!"))
-                        self.stdout.write(f"   Ticket Local #{t_local.id} ('{local_sumario_clean}')")
+                    # Só match EXATO (substring removido: ímã de falso-positivo)
+                    if local_sumario_clean != mx_desc_clean:
+                        continue
 
-                # Vincula os encontrados
+                    # Guarda de data: SR não pode preceder a criação do ticket
+                    if mx_reportdate is None:
+                        self.stdout.write(f"   SKIP SR {mx_id}: sem reportdate parseável")
+                        continue
+                    if mx_reportdate < t_local.data_criacao - MATCH_BUFFER:
+                        self.stdout.write(
+                            f"   SKIP SR {mx_id}: reportdate {mx_reportdate.isoformat()} "
+                            f"anterior à criação do ticket #{t_local.id}"
+                        )
+                        continue
+
+                    matches_encontrados.append(t_local)
+                    self.stdout.write(self.style.SUCCESS(f"MATCH EXATO ENCONTRADO para SR {mx_id}!"))
+                    self.stdout.write(f"   Ticket Local #{t_local.id} ('{local_sumario_clean}')")
+
                 for t_match in matches_encontrados:
                     self._vincular_id(t_match, mx_id)
                     total_vinculados += 1
-                    
                     tickets_para_processar.append(t_match)
-                    
-                    # Remove da lista de sem_id para não processar de novo
                     if t_match in tickets_sem_id:
                         tickets_sem_id.remove(t_match)
 
@@ -153,6 +164,18 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(msg_final))
         else:
             self.stdout.write(msg_final)
+
+    def _parse_maximo_date(self, raw) -> "datetime | None":
+        """Parseia reportdate do Maximo para datetime aware. None se inválido/vazio."""
+        if not raw:
+            return None
+        try:
+            dt = datetime.fromisoformat(str(raw))
+        except (ValueError, TypeError):
+            return None
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt)
+        return dt
 
     def _vincular_id(self, ticket: Ticket, novo_maximo_id: str):
 
