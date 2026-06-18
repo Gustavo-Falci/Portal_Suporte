@@ -458,3 +458,127 @@ class AreaMultiplosClientesTests(TestCase):
 
     def test_related_name_areas_preservado(self):
         self.assertIn(self.area, self.ana.areas.all())
+
+
+from io import StringIO
+from datetime import timedelta
+from django.utils import timezone
+from django.core.management.base import OutputWrapper
+from tickets.management.commands.sincronizar_maximo import Command
+
+
+class ParseMaximoDateTests(SimpleTestCase):
+    def setUp(self):
+        self.cmd = Command()
+
+    def test_parseia_iso_com_offset(self):
+        dt = self.cmd._parse_maximo_date("2026-06-18T14:30:00-03:00")
+        self.assertIsNotNone(dt)
+        self.assertTrue(timezone.is_aware(dt))
+
+    def test_torna_aware_data_naive(self):
+        dt = self.cmd._parse_maximo_date("2026-06-18T14:30:00")
+        self.assertIsNotNone(dt)
+        self.assertTrue(timezone.is_aware(dt))
+
+    def test_retorna_none_para_vazio(self):
+        self.assertIsNone(self.cmd._parse_maximo_date(""))
+        self.assertIsNone(self.cmd._parse_maximo_date(None))
+
+    def test_retorna_none_para_invalido(self):
+        self.assertIsNone(self.cmd._parse_maximo_date("xx/yy/zz"))
+
+
+class SyncMaximoMatchTests(TestCase):
+    """Guarda de data no match por texto do sync Maximo."""
+
+    def _cmd(self):
+        cmd = Command()
+        cmd.stdout = OutputWrapper(StringIO())  # silencia saída no teste
+        return cmd
+
+    def _novo_ticket(self, sumario="Sistema Inoperante"):
+        user = Cliente.objects.create(email="u@sync.com", username="u_sync")
+        return Ticket.objects.create(
+            cliente=user, sumario=sumario, descricao="d", status_maximo="NEW"
+        )
+
+    def _item(self, ticket, *, ticketid, status, delta):
+        """Monta um item da API com reportdate = data_criacao + delta."""
+        return {
+            "ticketid": ticketid,
+            "description": ticket.sumario,
+            "status": status,
+            "owner": "tecnico",
+            "reportdate": (ticket.data_criacao + delta).isoformat(),
+        }
+
+    def test_nao_vincula_sr_fechado_antigo(self):
+        # Bug original: SR CLOSED antigo no histórico com mesmo nome.
+        # Barrado pela guarda de DATA (reportdate < criação), não pelo status.
+        ticket = self._novo_ticket()
+        item = self._item(ticket, ticketid="SR-OLD", status="CLOSED",
+                          delta=timedelta(days=-30))
+        self._cmd().processar_tickets([item])
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.maximo_id)
+        self.assertEqual(ticket.status_maximo, "NEW")
+
+    def test_vincula_sr_fechado_recente(self):
+        # SR CLOSED com reportdate recente (ticket aberto+fechado rápido) DEVE
+        # vincular e fechar no portal, mesmo sem vínculo prévio.
+        ticket = self._novo_ticket()
+        item = self._item(ticket, ticketid="SR-FAST", status="CLOSED",
+                          delta=timedelta(minutes=1))
+        self._cmd().processar_tickets([item])
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.maximo_id, "SR-FAST")
+        self.assertEqual(ticket.status_maximo, "CLOSED")
+
+    def test_nao_vincula_sr_ativo_anterior_a_criacao(self):
+        # Isola a guarda de DATA (status não-terminal, mas reportdate antiga)
+        ticket = self._novo_ticket()
+        item = self._item(ticket, ticketid="SR-OLD2", status="INPROG",
+                          delta=timedelta(hours=-2))
+        self._cmd().processar_tickets([item])
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.maximo_id)
+        self.assertEqual(ticket.status_maximo, "NEW")
+
+    def test_nao_vincula_sem_reportdate(self):
+        ticket = self._novo_ticket()
+        item = {"ticketid": "SR-X", "description": ticket.sumario,
+                "status": "INPROG", "owner": "t", "reportdate": ""}
+        self._cmd().processar_tickets([item])
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.maximo_id)
+
+    def test_vincula_sr_recente(self):
+        ticket = self._novo_ticket()
+        item = self._item(ticket, ticketid="SR-NEW", status="INPROG",
+                          delta=timedelta(minutes=1))
+        self._cmd().processar_tickets([item])
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.maximo_id, "SR-NEW")
+        self.assertEqual(ticket.status_maximo, "INPROG")
+
+    def test_vincula_dentro_do_buffer(self):
+        # reportdate 2 min ANTES da criação ainda casa (buffer de 5 min)
+        ticket = self._novo_ticket()
+        item = self._item(ticket, ticketid="SR-BUF", status="INPROG",
+                          delta=timedelta(minutes=-2))
+        self._cmd().processar_tickets([item])
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.maximo_id, "SR-BUF")
+
+    def test_ticket_ja_vinculado_fecha_normal(self):
+        # Guarda NÃO afeta tickets já vinculados: fechamento legítimo passa
+        ticket = self._novo_ticket()
+        ticket.maximo_id = "SR-LIGADO"
+        ticket.save()
+        item = {"ticketid": "SR-LIGADO", "description": ticket.sumario,
+                "status": "CLOSED", "owner": "t",
+                "reportdate": (ticket.data_criacao - timedelta(days=10)).isoformat()}
+        self._cmd().processar_tickets([item])
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status_maximo, "CLOSED")
