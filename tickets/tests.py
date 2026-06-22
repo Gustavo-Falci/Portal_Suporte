@@ -582,3 +582,58 @@ class SyncMaximoMatchTests(TestCase):
         self._cmd().processar_tickets([item])
         ticket.refresh_from_db()
         self.assertEqual(ticket.status_maximo, "CLOSED")
+
+
+from tickets.management.commands.auditar_vinculos_maximo import Command as AuditCommand
+
+
+class AuditarVinculosTests(TestCase):
+    """Auditoria read-only de vínculos legados errados (SR anterior à criação)."""
+
+    def _cmd(self):
+        cmd = AuditCommand()
+        cmd._buf = StringIO()
+        cmd.stdout = OutputWrapper(cmd._buf)
+        return cmd
+
+    def _ticket(self, maximo_id, status="CLOSED", sumario="Sistema Inoperante"):
+        user = Cliente.objects.create(email=f"{maximo_id}@a.com", username=f"u{maximo_id}")
+        return Ticket.objects.create(
+            cliente=user, sumario=sumario, descricao="d",
+            status_maximo=status, maximo_id=maximo_id,
+        )
+
+    def _item(self, ticket, *, ticketid, status, delta, sumario=None):
+        return {
+            "ticketid": ticketid,
+            "description": sumario if sumario is not None else ticket.sumario,
+            "status": status,
+            "reportdate": (ticket.data_criacao + delta).isoformat(),
+        }
+
+    def test_sinaliza_vinculo_legado_e_sugere_sr_correto(self):
+        # Ticket colado num SR antigo CLOSED; existe SR recente de mesmo nome.
+        ticket = self._ticket(maximo_id="2177", status="CLOSED")
+        itens = [
+            self._item(ticket, ticketid="2177", status="CLOSED", delta=timedelta(days=-30)),
+            self._item(ticket, ticketid="2260", status="DOC", delta=timedelta(minutes=1)),
+        ]
+        cmd = self._cmd()
+        cmd.auditar(itens)
+        out = cmd._buf.getvalue()
+        self.assertIn("[SUSPEITO]", out)
+        self.assertIn(f"Ticket #{ticket.id}", out)
+        self.assertIn("2260", out)                       # sugere o SR correto
+        self.assertIn("Vínculos SUSPEITOS (legado): 1", out)
+
+    def test_nao_sinaliza_vinculo_coerente(self):
+        # Ticket vinculado a SR cujo reportdate é posterior à criação: OK.
+        ticket = self._ticket(maximo_id="2260", status="DOC")
+        itens = [
+            self._item(ticket, ticketid="2260", status="DOC", delta=timedelta(minutes=1)),
+        ]
+        cmd = self._cmd()
+        cmd.auditar(itens)
+        out = cmd._buf.getvalue()
+        self.assertNotIn("[SUSPEITO]", out)
+        self.assertIn("Nenhum vínculo suspeito encontrado.", out)
