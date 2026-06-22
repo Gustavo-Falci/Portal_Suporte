@@ -140,10 +140,19 @@
                                 <div class="col-md-8 mb-2 mb-md-0">
                                     <div class="input-group input-group-sm">
                                         <span class="input-group-text rounded-0 bg-white border-secondary border-opacity-25">📎 Anexar</span>
-                                        {{ form.anexo }}
+                                        <input class="form-control {% if form.arquivo.errors %}is-invalid{% endif %}"
+                                            type="file"
+                                            id="id_arquivo"
+                                            name="arquivo"
+                                            multiple
+                                            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.rar,.xml,.pptx,.ppt">
                                     </div>
-                                    
-                                    <div id="fileErrorMsg" class="text-danger small fw-bold mt-1 d-none"></div> 
+
+                                    <div class="form-text text-muted" style="font-size: 0.75rem;">
+                                        Segure <strong>Ctrl</strong> (ou Cmd no Mac) para selecionar vários arquivos.
+                                    </div>
+
+                                    <div id="fileErrorMsg" class="text-danger small fw-bold mt-1 d-none"></div>
                                 </div>
                                 <div class="col-md-4 text-end">
                                     <button type="submit" class="btn btn-primary rounded-0 px-4 w-100">
@@ -302,10 +311,10 @@
                         }
 
                         // 2. Erro no Anexo (ex: extensão inválida)
-                        if (result.body.errors && result.body.errors.anexo) {
+                        if (result.body.errors && result.body.errors.arquivo) {
                             if(fileInput && fileErrorMsg) {
                                 fileInput.classList.add('is-invalid');
-                                fileErrorMsg.textContent = result.body.errors.anexo[0];
+                                fileErrorMsg.textContent = result.body.errors.arquivo[0];
                                 fileErrorMsg.style.display = 'block';
                             }
                         }

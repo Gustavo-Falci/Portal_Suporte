@@ -30,6 +30,20 @@ def interacao_upload_path(instance, filename):
     return f"tickets/{ticket_id}/chat/{filename}"
 
 
+def interacao_anexo_upload_path(instance, filename):
+
+    """
+    Organiza anexos múltiplos do chat: tickets/ID_DO_TICKET/chat/nomedoarquivo
+    """
+
+    ticket_id = (
+        instance.interacao.ticket.id
+        if instance.interacao and instance.interacao.ticket
+        else "temp"
+    )
+    return f"tickets/{ticket_id}/chat/{filename}"
+
+
 # CONSTANTES DE STATUS (Limpeza Visual)
 MAXIMO_STATUS_CHOICES = [
     ("NEW", "Novo"),
@@ -335,6 +349,31 @@ class TicketInteracao(models.Model):
         # Se for maior, pega os primeiros 15, adiciona "..." e pega os últimos 10
         # Isso garante que a extensão (.pptx) sempre apareça
         return f"{name[:30]}...{name[-7:]}"
+
+
+class InteracaoAnexo(models.Model):
+
+    """
+    Suporta múltiplos arquivos por interação do chat.
+    O campo legado TicketInteracao.anexo continua válido para leitura.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    interacao = models.ForeignKey(
+        TicketInteracao, related_name="anexos", on_delete=models.CASCADE
+    )
+    arquivo = models.FileField(upload_to=interacao_anexo_upload_path)
+    data_envio = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["data_envio"]
+
+    def __str__(self):
+        return f"Anexo da interação {self.interacao_id}"
+
+    @property
+    def filename(self):
+        return os.path.basename(self.arquivo.name)
 
 
 class Notificacao(models.Model):

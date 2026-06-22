@@ -29,6 +29,11 @@ urlpatterns = [
         name="download_anexo",
     ),
     path(
+        "interacao/anexo-multiplo/<uuid:anexo_id>/",
+        views.download_anexo_multiplo,
+        name="download_anexo_multiplo",
+    ),
+    path(
         "notificacao/ler/<int:notificacao_id>/",
         views.marcar_notificacao_lida,
         name="marcar_notificacao_lida",

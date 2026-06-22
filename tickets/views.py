@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpRequest, FileResponse
 from django.contrib import messages
 from django.urls import reverse
-from .models import Ticket, TicketInteracao, Cliente, Notificacao, MAXIMO_STATUS_CHOICES, TicketAnexo
+from .models import Ticket, TicketInteracao, Cliente, Notificacao, MAXIMO_STATUS_CHOICES, TicketAnexo, InteracaoAnexo
 from .forms import TicketForm, TicketInteracaoForm
 from django.db.models import Q, QuerySet
 from django.db import transaction
@@ -285,17 +285,14 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
             interacao.ticket = ticket
             interacao.autor = request.user
             
-            if request.FILES:
-                arquivo_recebido = list(request.FILES.values())[0]
-                interacao.anexo = arquivo_recebido
-
             interacao.save()
+
+            # Múltiplos anexos: cria 1 InteracaoAnexo por arquivo enviado
+            for arquivo_recebido in request.FILES.getlist("arquivo"):
+                InteracaoAnexo.objects.create(interacao=interacao, arquivo=arquivo_recebido)
             audit.registrar(request.user, f"adicionou interação ao Ticket #{ticket.id}")
 
             interacao_salva = TicketInteracao.objects.get(id=interacao.id)
-            
-            # Verificamos se depois de salvar no banco, o arquivo continua lá
-            print(f"Status do banco de dados - Tem anexo? {bool(interacao.anexo)}\n")
 
             sincronizado = MaximoSenderService.enviar_interacao(ticket, interacao)
             
@@ -519,6 +516,44 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
 
     except Exception as e:
         logger.error(f"Erro inesperado ao servir anexo da interação {interacao_id}: {e}")
+        messages.error(request, "Ocorreu um erro interno ao processar o download.")
+        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+
+
+@login_required(login_url="/login/")
+def download_anexo_multiplo(request: HttpRequest, anexo_id: str) -> HttpResponse:
+    """
+    Download de um anexo individual de interação (modelo InteracaoAnexo).
+    Mesma lógica de fallback local/Oracle do download_anexo_interacao.
+    """
+    anexo = get_object_or_404(InteracaoAnexo, pk=anexo_id)
+    ticket = anexo.interacao.ticket
+
+    if not _usuario_tem_acesso_ticket(request.user, ticket):
+        messages.error(request, "Você não tem permissão para acessar este arquivo.")
+        return redirect("tickets:meus_tickets")
+
+    try:
+        audit.registrar(request.user, f"baixou anexo #{anexo.id} da interação #{anexo.interacao_id} (Ticket #{ticket.id})")
+        if getattr(settings, 'USE_S3', False):
+            if hasattr(anexo.arquivo.storage, 'is_local') and anexo.arquivo.storage.is_local(anexo.arquivo.name):
+                arquivo = anexo.arquivo.open('rb')
+                filename = os.path.basename(anexo.arquivo.name)
+                return FileResponse(arquivo, as_attachment=True, filename=filename)
+            else:
+                return redirect(anexo.arquivo.url)
+        else:
+            arquivo = anexo.arquivo.open('rb')
+            filename = os.path.basename(anexo.arquivo.name)
+            return FileResponse(arquivo, as_attachment=True, filename=filename)
+
+    except FileNotFoundError:
+        logger.error(f"Arquivo não encontrado no disco: {anexo.arquivo.name}")
+        messages.error(request, "Arquivo indisponível, contate o suporte.")
+        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+
+    except Exception as e:
+        logger.error(f"Erro inesperado ao servir anexo {anexo_id}: {e}")
         messages.error(request, "Ocorreu um erro interno ao processar o download.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Cliente, Ambiente, Area, Ticket, TicketInteracao, Notificacao, TicketAnexo
+from .models import Cliente, Ambiente, Area, Ticket, TicketInteracao, Notificacao, TicketAnexo, InteracaoAnexo
 
 # Customização do Cabeçalho
 admin.site.site_header = "Portal de Suporte | Administração"
@@ -160,19 +160,27 @@ class AreaAdmin(admin.ModelAdmin):
     get_clientes_vinculados.short_description = "Clientes Vinculados"
 
 
+class InteracaoAnexoInline(admin.TabularInline):
+
+    model = InteracaoAnexo
+    extra = 0
+    readonly_fields = ("data_envio",)
+
+
 @admin.register(TicketInteracao)
 class TicketInteracaoAdmin(admin.ModelAdmin):
 
     list_display = ("id", "ticket", "autor", "data_criacao", "tem_anexo")
     list_filter = ("data_criacao", "autor__username")
     search_fields = ("mensagem", "ticket__sumario")
+    inlines = [InteracaoAnexoInline]
 
     # Performance
     list_select_related = ("ticket", "autor")
 
     @admin.display(boolean=True, description="Anexo?")
     def tem_anexo(self, obj):
-        return bool(obj.anexo)
+        return bool(obj.anexo) or obj.anexos.exists()
 
 
 # Registar Notificações ajuda a debugar se o "sininho" não funcionar

@@ -39,26 +39,48 @@
         <div class="card-body pt-1 pb-2 px-3">
             <p class="mb-1 text-dark" style="white-space: pre-wrap; font-size: 0.9rem; line-height: 1.4;">{{ interacao.mensagem|urlize_target_blank }}</p>
             
-            {% if interacao.anexo %}
+            {% if interacao.anexos.all or interacao.anexo %}
                 <div class="mt-2 pt-2 border-top">
-                    <small>
-                        <a href="{% url 'tickets:download_anexo' interacao.id %}" 
-                           class="text-decoration-none d-flex align-items-center" 
-                           title="{{ interacao.filename }}"> 
-                            
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-paperclip me-1" viewBox="0 0 16 16">
-                                <path d="M4.5 3a2.5 2.5 0 0 1 5 0v9a1.5 1.5 0 0 1-3 0V5a.5.5 0 0 1 1 0v7a.5.5 0 0 1-1 0v-7A1.5 1.5 0 0 0 6.5 2h-3A1.5 1.5 0 0 0 2 3.5v9A2.5 2.5 0 0 0 4.5 15h7a2.5 2.5 0 0 0 2.5-2.5v-9a.5.5 0 0 1 1 0v9A3.5 3.5 0 0 1 11.5 16h-7A3.5 3.5 0 0 1 1 12.5v-9A3.5 3.5 0 0 1 4.5 0h3a.5.5 0 0 1 0 1h-3z"/>
-                            </svg>
-                            
-                            <span class="text-truncate" style="max-width: 200px; display: inline-block; vertical-align: bottom;">
-                                {% if interacao.filename %}
-                                    {{ interacao.filename }}
-                                {% else %}
-                                    {{ interacao.anexo.name|cut:"tickets/temp/"|cut:"chat/"|slice:"-25:" }}
-                                {% endif %}
-                            </span>
-                        </a>
-                    </small>
+
+                    {# Anexos múltiplos (modelo novo InteracaoAnexo) #}
+                    {% for anexo in interacao.anexos.all %}
+                        <small class="d-block {% if not forloop.first %}mt-1{% endif %}">
+                            <a href="{% url 'tickets:download_anexo_multiplo' anexo.id %}"
+                               class="text-decoration-none d-flex align-items-center"
+                               title="{{ anexo.filename }}">
+
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-paperclip me-1" viewBox="0 0 16 16">
+                                    <path d="M4.5 3a2.5 2.5 0 0 1 5 0v9a1.5 1.5 0 0 1-3 0V5a.5.5 0 0 1 1 0v7a.5.5 0 0 1-1 0v-7A1.5 1.5 0 0 0 6.5 2h-3A1.5 1.5 0 0 0 2 3.5v9A2.5 2.5 0 0 0 4.5 15h7a2.5 2.5 0 0 0 2.5-2.5v-9a.5.5 0 0 1 1 0v9A3.5 3.5 0 0 1 11.5 16h-7A3.5 3.5 0 0 1 1 12.5v-9A3.5 3.5 0 0 1 4.5 0h3a.5.5 0 0 1 0 1h-3z"/>
+                                </svg>
+
+                                <span class="text-truncate" style="max-width: 200px; display: inline-block; vertical-align: bottom;">
+                                    {{ anexo.filename }}
+                                </span>
+                            </a>
+                        </small>
+                    {% endfor %}
+
+                    {# Anexo legado (interações antigas com FileField único) #}
+                    {% if interacao.anexo %}
+                        <small class="d-block {% if interacao.anexos.all %}mt-1{% endif %}">
+                            <a href="{% url 'tickets:download_anexo' interacao.id %}"
+                               class="text-decoration-none d-flex align-items-center"
+                               title="{{ interacao.filename }}">
+
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-paperclip me-1" viewBox="0 0 16 16">
+                                    <path d="M4.5 3a2.5 2.5 0 0 1 5 0v9a1.5 1.5 0 0 1-3 0V5a.5.5 0 0 1 1 0v7a.5.5 0 0 1-1 0v-7A1.5 1.5 0 0 0 6.5 2h-3A1.5 1.5 0 0 0 2 3.5v9A2.5 2.5 0 0 0 4.5 15h7a2.5 2.5 0 0 0 2.5-2.5v-9a.5.5 0 0 1 1 0v9A3.5 3.5 0 0 1 11.5 16h-7A3.5 3.5 0 0 1 1 12.5v-9A3.5 3.5 0 0 1 4.5 0h3a.5.5 0 0 1 0 1h-3z"/>
+                                </svg>
+
+                                <span class="text-truncate" style="max-width: 200px; display: inline-block; vertical-align: bottom;">
+                                    {% if interacao.filename %}
+                                        {{ interacao.filename }}
+                                    {% else %}
+                                        {{ interacao.anexo.name|cut:"tickets/temp/"|cut:"chat/"|slice:"-25:" }}
+                                    {% endif %}
+                                </span>
+                            </a>
+                        </small>
+                    {% endif %}
                 </div>
             {% endif %}
             </div>

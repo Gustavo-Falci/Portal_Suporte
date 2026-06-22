@@ -221,16 +221,30 @@ class TicketForm(forms.ModelForm):
 
 class TicketInteracaoForm(forms.ModelForm):
 
+    # Campo extra (não pertence ao model): recebe múltiplos arquivos.
+    # O salvamento é feito manualmente na view, criando 1 InteracaoAnexo por arquivo.
+    arquivo = forms.FileField(
+        required=False,
+        widget=forms.FileInput(attrs={"class": "form-control"}),
+        label="Anexos (Opcional)",
+    )
+
     class Meta:
 
         model = TicketInteracao
-        fields = ["mensagem", "anexo"]
+        fields = ["mensagem"]
         widgets = {
             "mensagem": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-            "anexo": forms.FileInput(attrs={"class": "form-control"}),
         }
 
-    def clean_anexo(self) -> Any:
+    def clean_arquivo(self) -> Any:
 
-        return _validar_anexo_comum(self.cleaned_data.get("anexo"))
+        arquivos = self.files.getlist("arquivo")
+        if not arquivos:
+            return None
+
+        for f in arquivos:
+            _validar_anexo_comum(f)
+
+        return arquivos
     
