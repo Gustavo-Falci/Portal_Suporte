@@ -223,7 +223,7 @@
 </div>
 
 {% block scripts %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
     document.addEventListener("DOMContentLoaded", function() {
         const chatForm = document.getElementById("chatForm");
         const chatContainer = document.getElementById("chatContainer");

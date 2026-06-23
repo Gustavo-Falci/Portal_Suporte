@@ -9,7 +9,7 @@ from django.conf import settings
 from .models import Ticket, TicketInteracao, Cliente, Notificacao
 from django.urls import reverse
 from django.db.models import Q
-from django.utils.html import strip_tags
+from django.utils.html import strip_tags, escape
 
 logger = logging.getLogger(__name__)
 
@@ -175,14 +175,19 @@ class NotificationService:
         
         assunto = f"[Atualização] Ticket #{ticket.maximo_id} mudou para {status_novo}"
 
+        # Escapa tudo que deriva de dados do usuário/banco antes de injetar no HTML
+        nome_cliente = escape(ticket.cliente.first_name or ticket.cliente.username)
+        status_ant_safe = escape(status_anterior_display)
+        status_novo_safe = escape(status_novo)
+
         corpo = f"""
-        Olá, {ticket.cliente.first_name or ticket.cliente.username}.<br><br>
-        
-        O status do seu chamado <strong>#{ticket.maximo_id}</strong> foi atualizado.<br><br>
-        
+        Olá, {nome_cliente}.<br><br>
+
+        O status do seu chamado <strong>#{escape(str(ticket.maximo_id))}</strong> foi atualizado.<br><br>
+
         <div style="border: 1px solid #ccc; padding: 15px; background-color: #f4f4f4;">
-            <p><strong>De:</strong> <span style="color: #666;">{status_anterior_display}</span></p>
-            <p><strong>Para:</strong> <span style="color: #0f62fe; font-weight: bold;">{status_novo}</span></p>
+            <p><strong>De:</strong> <span style="color: #666;">{status_ant_safe}</span></p>
+            <p><strong>Para:</strong> <span style="color: #0f62fe; font-weight: bold;">{status_novo_safe}</span></p>
         </div>
         <br>
         <a href="{full_link}">Clique aqui para acessar o portal e ver os detalhes.</a>
@@ -233,6 +238,12 @@ class NotificationService:
             autor_nome = interacao.autor.get_full_name() or interacao.autor.username
             preview_msg = f"{autor_nome}: {interacao.mensagem[:60]}..."
             assunto = f"[Portal Suporte] Nova mensagem no Ticket #{ticket.maximo_id or ticket.id}"
+
+            # Versões escapadas p/ injeção segura no corpo HTML do e-mail
+            autor_nome_safe = escape(autor_nome)
+            sumario_safe = escape(ticket.sumario)
+            ticket_ref_safe = escape(str(ticket.maximo_id or ticket.id))
+            mensagem_safe = escape(interacao.mensagem).replace("\n", "<br>")
             
             # Link para o ticket
             link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
@@ -259,13 +270,14 @@ class NotificationService:
                 )
 
                 # --- B. Envio de E-mail ---
+                nome_dest_safe = escape(usuario.first_name or usuario.username)
                 corpo_email = f"""
-                Olá, {usuario.first_name or usuario.username}.<br><br>
-                Houve uma nova interação no ticket <strong>#{ticket.maximo_id or ticket.id}</strong> - {ticket.sumario}.<br><br>
-                
+                Olá, {nome_dest_safe}.<br><br>
+                Houve uma nova interação no ticket <strong>#{ticket_ref_safe}</strong> - {sumario_safe}.<br><br>
+
                 <div style="background-color: #f4f4f4; padding: 15px; border-left: 4px solid #0f62fe;">
-                    <strong>{autor_nome}:</strong><br>
-                    {interacao.mensagem}
+                    <strong>{autor_nome_safe}:</strong><br>
+                    {mensagem_safe}
                 </div>
                 <br>
                 <a href="{full_link}">Clique aqui para responder no portal</a>

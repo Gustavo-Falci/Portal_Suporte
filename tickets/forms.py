@@ -13,6 +13,71 @@ from .models import Ambiente, Area, Ticket, TicketInteracao
 # Obtém o modelo de cliente atual
 Cliente = get_user_model()
 
+# --- VALIDAÇÃO POR CONTEÚDO (MAGIC BYTES) ---
+
+# Categorias de assinatura por conteúdo real do arquivo (não confia no nome).
+# Cada categoria mapeia para os bytes iniciais aceitos.
+_MAGIC_SIGNATURES = {
+    "pdf": (b"%PDF",),
+    "png": (b"\x89PNG\r\n\x1a\n",),
+    "jpg": (b"\xff\xd8\xff",),
+    # docx/xlsx/pptx/zip são todos contêineres ZIP -> "PK"
+    "zip": (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"),
+    # doc/xls/ppt legados são OLE2 Compound File
+    "ole": (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",),
+    "rar": (b"Rar!\x1a\x07",),
+    # txt/csv/xml: texto puro, sem assinatura confiável -> validado por heurística
+    "text": None,
+}
+
+# Extensão -> categoria de assinatura esperada.
+_EXT_PARA_CATEGORIA = {
+    ".pdf": "pdf",
+    ".png": "png",
+    ".jpg": "jpg", ".jpeg": "jpg",
+    ".zip": "zip", ".docx": "zip", ".xlsx": "zip", ".pptx": "zip",
+    ".doc": "ole", ".xls": "ole", ".ppt": "ole",
+    ".rar": "rar",
+    ".txt": "text", ".csv": "text", ".xml": "text",
+}
+
+
+def _validar_magic_bytes(arquivo: Any, ext: str) -> None:
+    """
+    Confere se o conteúdo real do arquivo bate com a extensão declarada.
+    Impede que um executável/script renomeado (ex: vírus.exe -> doc.pdf) passe.
+    Lê apenas o cabeçalho e reposiciona o ponteiro (não consome o upload).
+    """
+
+    categoria = _EXT_PARA_CATEGORIA.get(ext)
+    if categoria is None:
+        # Extensão já barrada na whitelist anterior; defensivo.
+        raise ValidationError("Tipo de arquivo não suportado.")
+
+    # Lê o cabeçalho sem destruir o arquivo para o save posterior
+    pos_inicial = arquivo.tell() if hasattr(arquivo, "tell") else 0
+    arquivo.seek(0)
+    header = arquivo.read(2048)
+    arquivo.seek(pos_inicial)
+
+    if not header:
+        raise ValidationError("Arquivo vazio ou corrompido.")
+
+    assinaturas = _MAGIC_SIGNATURES[categoria]
+
+    if assinaturas is None:
+        # Texto (txt/csv/xml): rejeita binário disfarçado.
+        # Byte NUL é forte indicador de conteúdo binário, não de texto.
+        if b"\x00" in header:
+            raise ValidationError("Conteúdo binário inválido para arquivo de texto.")
+        return
+
+    if not header.startswith(assinaturas):
+        raise ValidationError(
+            "O conteúdo do arquivo não corresponde à extensão informada."
+        )
+
+
 # --- UTILITÁRIO DE VALIDAÇÃO (DRY & Segurança) ---
 
 def _validar_anexo_comum(arquivo: Any) -> Any:
@@ -25,8 +90,8 @@ def _validar_anexo_comum(arquivo: Any) -> Any:
     if not arquivo:
         return None
 
-    # 1. Validar tamanho (Limite: 150MB)
-    max_size_bytes = getattr(settings, 'FILE_UPLOAD_MAX_MEMORY_SIZE', 150 * 1024 * 1024)
+    # 1. Validar tamanho (limite-duro configurável; padrão 50MB)
+    max_size_bytes = getattr(settings, 'MAX_UPLOAD_SIZE', 50 * 1024 * 1024)
     if arquivo.size > max_size_bytes:
         limit_mb = max_size_bytes / (1024 * 1024)
         raise ValidationError(
@@ -70,7 +135,10 @@ def _validar_anexo_comum(arquivo: Any) -> Any:
             raise ValidationError(
                 f"Formato de arquivo inválido ({content_type_guess})."
             )
-            
+
+    # 4. Validação por conteúdo real (magic bytes) — não confia no nome/extensão
+    _validar_magic_bytes(arquivo, ext)
+
     return arquivo
 
 
