@@ -300,6 +300,15 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
                 # Adiciona aviso visual (aparecerá se a página recarregar ou se o JS tratar mensagens)
                 messages.warning(request, "Mensagem salva localmente, mas houve instabilidade na sincronização com o IBM Maximo.")
 
+            # ENVIO DE ANEXOS AO MAXIMO (DOCLINKS) EM SEGUNDO PLANO
+            # Upload de arquivos pode ser lento; roda em thread para não travar o usuário.
+            anexos_interacao = list(interacao_salva.anexos.all())
+            if anexos_interacao:
+                threading.Thread(
+                    target=MaximoSenderService.enviar_anexos,
+                    args=(ticket, anexos_interacao),
+                ).start()
+
             # 1. ENVIO DE E-MAIL EM SEGUNDO PLANO (THREADING)
             # Isso impede que o usuário fique esperando o SMTP responder
             email_thread = threading.Thread(

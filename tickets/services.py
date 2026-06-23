@@ -2,6 +2,8 @@ import logging
 import json
 import requests
 import os
+import mimetypes
+from urllib.parse import urlparse
 from django.core.mail import EmailMessage
 from django.conf import settings
 from .models import Ticket, TicketInteracao, Cliente, Notificacao
@@ -365,3 +367,113 @@ class MaximoSenderService:
         except Exception as e:
             logger.error(f"Exceção ao conectar com Maximo: {e}")
             return False
+
+    # URL base do Object Structure (sem ?lean=1) usada para localizar a SR
+    MAXIMO_API_URL_OS = getattr(settings, 'MAXIMO_API_URL', '')
+
+    @staticmethod
+    def _get_member_href(maximo_id: str, apikey: str) -> str | None:
+
+        """
+        Localiza o href (rest id) do registro da SR no Maximo a partir do ticketid.
+        Necessário para montar a URL de doclinks (anexos).
+        """
+
+        base_url = MaximoSenderService.MAXIMO_API_URL_OS
+        if not base_url:
+            logger.error("MAXIMO_API_URL não configurada; impossível localizar SR para anexo.")
+            return None
+
+        params = {
+            "oslc.where": f'ticketid="{maximo_id}"',
+            "oslc.select": "href",
+            "lean": 1,
+        }
+        headers = {"apikey": apikey, "Accept": "application/json"}
+
+        try:
+            resp = requests.get(base_url, params=params, headers=headers, verify=False, timeout=10)
+            if resp.status_code != 200:
+                logger.error(f"Erro ao localizar SR #{maximo_id} ({resp.status_code}): {resp.text}")
+                return None
+
+            data = resp.json()
+            membros = data.get("member") or data.get("rdfs:member") or []
+            if not membros:
+                logger.error(f"SR #{maximo_id} não encontrada no Maximo para envio de anexo.")
+                return None
+
+            href = membros[0].get("href")
+            if href and not href.startswith("http"):
+                p = urlparse(base_url)
+                href = f"{p.scheme}://{p.netloc}/{href.lstrip('/')}"
+            return href
+
+        except Exception as e:
+            logger.error(f"Exceção ao localizar SR #{maximo_id} no Maximo: {e}")
+            return None
+
+    @classmethod
+    def enviar_anexos(cls, ticket: Ticket, anexos: list) -> bool:
+
+        """
+        Envia anexos do chat (InteracaoAnexo) para os DOCLINKS da SR no Maximo.
+        Fluxo: localiza href da SR -> POST de cada arquivo (bytes raw) em /doclinks.
+        Roda em segundo plano (thread) para não bloquear o usuário.
+        """
+
+        if not ticket.maximo_id:
+            logger.warning(f"Envio de anexo abortado: Ticket {ticket.id} sem maximo_id.")
+            return False
+
+        if not anexos:
+            return True
+
+        apikey = getattr(settings, 'MAXIMO_API_KEY', '')
+
+        member_href = cls._get_member_href(str(ticket.maximo_id), apikey)
+        if not member_href:
+            return False
+
+        doclinks_url = f"{member_href}/doclinks"
+        sucesso_total = True
+
+        for anexo in anexos:
+            try:
+                anexo.arquivo.open('rb')
+                anexo.arquivo.seek(0)
+                conteudo = anexo.arquivo.read()
+                nome = os.path.basename(anexo.arquivo.name)
+                content_type = mimetypes.guess_type(nome)[0] or 'application/octet-stream'
+
+                headers = {
+                    "Content-Type": content_type,
+                    "slug": nome,
+                    "x-document-meta": "FILE/Attachments",
+                    "x-document-description": f"Anexo do chat - {nome}",
+                    "apikey": apikey,
+                }
+
+                resp = requests.post(
+                    doclinks_url,
+                    data=conteudo,
+                    headers=headers,
+                    verify=False,
+                    timeout=30,
+                )
+
+                if resp.status_code in [200, 201, 204]:
+                    logger.info(f"Anexo '{nome}' enviado ao Maximo SR #{ticket.maximo_id}")
+                else:
+                    logger.error(f"Erro DOCLINKS '{nome}' ({resp.status_code}): {resp.text}")
+                    sucesso_total = False
+
+            except Exception as e:
+                logger.error(f"Exceção ao enviar anexo '{getattr(anexo.arquivo, 'name', '?')}' ao Maximo: {e}")
+                sucesso_total = False
+
+            finally:
+                if hasattr(anexo.arquivo, 'closed') and not anexo.arquivo.closed:
+                    anexo.arquivo.close()
+
+        return sucesso_total
