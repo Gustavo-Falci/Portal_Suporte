@@ -86,7 +86,7 @@
                             {% for code, label in status_choices %}
                             <li>
                                 <label class="dropdown-item d-flex align-items-center gap-2 px-2">
-                                    <input type="checkbox" class="form-check-input" name="status" value="{{ code }}"
+                                    <input type="checkbox" class="form-check-input flex-shrink-0" name="status" value="{{ code }}"
                                            {% if code in status_selecionados %}checked{% endif %}>
                                     {{ label }}
                                 </label>

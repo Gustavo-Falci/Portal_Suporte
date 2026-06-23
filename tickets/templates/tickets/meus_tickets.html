@@ -55,7 +55,7 @@
                             {% for key, value in status_choices %}
                             <li>
                                 <label class="dropdown-item d-flex align-items-center gap-2 px-2">
-                                    <input type="checkbox" class="form-check-input" name="status" value="{{ key }}"
+                                    <input type="checkbox" class="form-check-input flex-shrink-0" name="status" value="{{ key }}"
                                            {% if key in status_selecionados %}checked{% endif %}>
                                     {{ value }}
                                 </label>
