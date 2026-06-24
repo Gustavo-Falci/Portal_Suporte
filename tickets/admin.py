@@ -39,7 +39,6 @@ class ClienteAdmin(UserAdmin):
     )
     list_filter = ("is_staff", "is_active", "location", "groups")
 
-    # 'search_fields' é OBRIGATÓRIO para o autocomplete_fields funcionar noutros models
     search_fields = ("username", "first_name", "last_name", "email", "person_id")
 
     fieldsets = UserAdmin.fieldsets + (
