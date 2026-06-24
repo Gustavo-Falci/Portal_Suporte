@@ -163,7 +163,7 @@ class SecurityViewsTests(TestCase):
 
     def test_acesso_negado_ticket_de_terceiro(self):
         """Garante que um cliente não consiga ver a URL de detalhes do ticket de outro."""
-        self.client.login(email="invasor@teste.com", password="123") # O backend espera 'email' agora
+        self.client.force_login(self.invasor)
         response = self.client.get(reverse('tickets:detalhe_ticket', kwargs={'pk': self.ticket.pk}))
 
         # Deve ser redirecionado para a lista de tickets (Código 302 Found) e não acessar o chamado
@@ -229,7 +229,7 @@ class VisaoEquipeLocationTests(TestCase):
     def test_colega_abre_e_posta_no_detalhe(self):
         self.t_ana.maximo_id = "SR999"
         self.t_ana.save()
-        self.client.login(email="bruno@pampa.com", password="123")
+        self.client.force_login(self.bruno)
         url = reverse("tickets:detalhe_ticket", kwargs={"pk": self.t_ana.pk})
         # GET abre (200)
         self.assertEqual(self.client.get(url).status_code, 200)
@@ -242,7 +242,7 @@ class VisaoEquipeLocationTests(TestCase):
         )
 
     def test_meus_tickets_mostra_equipe(self):
-        self.client.login(email="ana@pampa.com", password="123")
+        self.client.force_login(self.ana)
         resp = self.client.get(reverse("tickets:meus_tickets"))
         ids = {t.pk for t in resp.context["tickets"]}
         self.assertIn(self.t_ana.pk, ids)
@@ -250,26 +250,26 @@ class VisaoEquipeLocationTests(TestCase):
         self.assertNotIn(self.t_carla.pk, ids)
 
     def test_meus_tickets_escopo_meus(self):
-        self.client.login(email="ana@pampa.com", password="123")
+        self.client.force_login(self.ana)
         resp = self.client.get(reverse("tickets:meus_tickets"), {"escopo": "meus"})
         ids = {t.pk for t in resp.context["tickets"]}
         self.assertEqual(ids, {self.t_ana.pk})
 
     def test_meus_tickets_escopo_equipe(self):
-        self.client.login(email="ana@pampa.com", password="123")
+        self.client.force_login(self.ana)
         resp = self.client.get(reverse("tickets:meus_tickets"), {"escopo": "equipe"})
         ids = {t.pk for t in resp.context["tickets"]}
         self.assertEqual(ids, {self.t_bruno.pk})
 
     def test_meus_tickets_contadores(self):
-        self.client.login(email="ana@pampa.com", password="123")
+        self.client.force_login(self.ana)
         resp = self.client.get(reverse("tickets:meus_tickets"))
         self.assertEqual(resp.context["count_todos"], 2)
         self.assertEqual(resp.context["count_meus"], 1)
         self.assertEqual(resp.context["count_equipe"], 1)
 
     def test_pagina_inicial_conta_equipe(self):
-        self.client.login(email="ana@pampa.com", password="123")
+        self.client.force_login(self.ana)
         resp = self.client.get(reverse("tickets:pagina_inicial"))
         # ana + bruno = 2 abertos (status NEW por padrão), carla não conta
         self.assertEqual(resp.context["total_geral"], 2)
@@ -350,7 +350,7 @@ class FiltroMultiStatusTests(TestCase):
         )
 
     def test_meus_tickets_multi_status(self):
-        self.client.login(email="u@acme.com", password="123")
+        self.client.force_login(self.user)
         resp = self.client.get(
             reverse("tickets:meus_tickets"), {"status": ["NEW", "INPROG"]}
         )
@@ -359,7 +359,7 @@ class FiltroMultiStatusTests(TestCase):
         self.assertEqual(resp.context["status_selecionados"], ["NEW", "INPROG"])
 
     def test_meus_tickets_status_unico_ainda_funciona(self):
-        self.client.login(email="u@acme.com", password="123")
+        self.client.force_login(self.user)
         resp = self.client.get(reverse("tickets:meus_tickets"), {"status": "CLOSED"})
         ids = {t.pk for t in resp.context["tickets"]}
         self.assertEqual(ids, {self.t_closed.pk})
@@ -374,7 +374,7 @@ class FiltroMultiStatusTests(TestCase):
         for t in (self.t_new, self.t_prog, self.t_closed):
             t.maximo_id = f"SR{t.pk}"
             t.save()
-        self.client.login(email="s@acme.com", password="123")
+        self.client.force_login(staff)
         resp = self.client.get(
             reverse("tickets:fila_atendimento"), {"status": ["NEW", "CLOSED"]}
         )
@@ -409,7 +409,7 @@ class MarcarTodasNotificacoesLidasTests(TestCase):
         )
 
     def test_marca_todas_nao_lidas_do_usuario(self):
-        self.client.login(email="dono@acme.com", password="123")
+        self.client.force_login(self.user)
         resp = self.client.post(reverse("tickets:marcar_todas_notificacoes_lidas"))
         self.assertEqual(resp.status_code, 302)
         nao_lidas = Notificacao.objects.filter(
@@ -418,13 +418,13 @@ class MarcarTodasNotificacoesLidasTests(TestCase):
         self.assertEqual(nao_lidas, 0)
 
     def test_nao_toca_notificacoes_de_outro_usuario(self):
-        self.client.login(email="dono@acme.com", password="123")
+        self.client.force_login(self.user)
         self.client.post(reverse("tickets:marcar_todas_notificacoes_lidas"))
         self.notif_outro.refresh_from_db()
         self.assertFalse(self.notif_outro.lida)
 
     def test_get_nao_permitido(self):
-        self.client.login(email="dono@acme.com", password="123")
+        self.client.force_login(self.user)
         resp = self.client.get(reverse("tickets:marcar_todas_notificacoes_lidas"))
         self.assertEqual(resp.status_code, 405)
 
@@ -846,3 +846,118 @@ class CriarTicketViewRESTTests(TestCase):
         ticket = Ticket.objects.get(sumario="Erro no ERP")
         self.assertIsNone(ticket.maximo_id)
         mock_email.assert_called_once()
+
+
+class CriarTicketLoggingTests(TestCase):
+    """Todo evento de criação de ticket deve ser registrado no log
+    (sucesso REST, sucesso fallback e-mail, falha REST, erro, form inválido)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="log@acme.com", username="logger_user", password="123",
+            location="ACME", person_id="P01",
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.ambiente = Ambiente.objects.create(nome_ambiente="ERP", numero_ativo="008")
+        self.ambiente.clientes.add(self.user)
+        self.client.force_login(self.user)
+
+    def _docx(self, nome="req.docx"):
+        return SimpleUploadedFile(
+            nome, b"PK\x03\x04docxbytes",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    def _post_valido(self):
+        data = {
+            "sumario": "Erro no ERP",
+            "descricao": "Trava ao salvar",
+            "prioridade": "2",
+            "ambiente": self.ambiente.id,
+            "documento_requisicao": self._docx(),
+        }
+        return self.client.post(reverse("tickets:criar_ticket"), data)
+
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo")
+    @patch("tickets.views.MaximoSenderService.enviar_anexos_criacao")
+    @patch("tickets.views.MaximoSenderService.criar_sr")
+    def test_loga_sucesso_rest(self, mock_criar, mock_anexos, mock_email):
+        mock_criar.return_value = {
+            "ticketid": "2277",
+            "href": "https://mx/_ABC--",
+            "doclinks": {"href": "https://mx/_ABC--/doclinks"},
+        }
+        with self.assertLogs("tickets.views", level="INFO") as cm:
+            self._post_valido()
+        linhas = "\n".join(cm.output)
+        self.assertIn("2277", linhas)
+        self.assertRegex(linhas, r"INFO.*[Ss]ucesso|INFO.*criada.*REST|INFO.*via REST")
+
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo")
+    @patch("tickets.views.MaximoSenderService.criar_sr", return_value=None)
+    def test_loga_falha_rest_e_sucesso_fallback(self, mock_criar, mock_email):
+        with self.assertLogs("tickets.views", level="INFO") as cm:
+            self._post_valido()
+        linhas = "\n".join(cm.output)
+        # Falha do REST registrada (WARNING)
+        self.assertRegex(linhas, r"WARNING.*(REST|criar_sr).*(falh|fallback)")
+        # Sucesso do envio por e-mail registrado (INFO)
+        self.assertRegex(linhas, r"INFO.*(e-mail|email|fallback|Listener)")
+
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo", side_effect=Exception("smtp down"))
+    @patch("tickets.views.MaximoSenderService.criar_sr", return_value=None)
+    def test_loga_erro_fallback_email(self, mock_criar, mock_email):
+        with self.assertLogs("tickets.views", level="ERROR") as cm:
+            self._post_valido()
+        self.assertRegex("\n".join(cm.output), r"ERROR.*fallback")
+
+    def test_loga_form_invalido(self):
+        # POST sem documento_requisicao (obrigatório) -> form inválido
+        data = {"sumario": "x", "descricao": "y", "prioridade": "2", "ambiente": self.ambiente.id}
+        with self.assertLogs("tickets.views", level="WARNING") as cm:
+            self.client.post(reverse("tickets:criar_ticket"), data)
+        linhas = "\n".join(cm.output)
+        self.assertRegex(linhas, r"WARNING.*(inválid|invalid|REJEITAD)")
+        # Não deve vazar valores dos campos, só nomes
+        self.assertIn("documento_requisicao", linhas)
+
+
+import tempfile
+from django.core.files.base import ContentFile
+from django.core.files.storage import FileSystemStorage as _FSStorage
+from tickets.storage import ToleranteS3Storage
+
+
+class ToleranteStorageLoggingTests(SimpleTestCase):
+    """ToleranteS3Storage usa logger (sem print/emoji) para não quebrar
+    stdout cp1252 no Windows e manter rastro no log."""
+
+    def _storage(self):
+        # Instancia sem chamar __init__ (evita setup real do S3/boto3).
+        st = ToleranteS3Storage.__new__(ToleranteS3Storage)
+        st.local_storage = _FSStorage(location=tempfile.mkdtemp())
+        return st
+
+    @patch("tickets.storage.S3Boto3Storage.save", return_value="nuvem/arquivo.txt")
+    def test_intercept_loga_sem_emoji(self, mock_super_save):
+        st = self._storage()
+        with self.assertLogs("tickets.storage", level="DEBUG") as cm:
+            nome = st.save("arquivo.txt", ContentFile(b"dados"))
+        self.assertEqual(nome, "nuvem/arquivo.txt")
+        saida = "\n".join(cm.output)
+        self.assertIn("arquivo.txt", saida)
+        self.assertNotIn("🚀", saida)
+
+    @patch("tickets.storage.S3Boto3Storage.save", side_effect=Exception("nuvem fora"))
+    def test_fallback_loga_sem_emoji_e_salva_local(self, mock_super_save):
+        st = self._storage()
+        with self.assertLogs("tickets.storage", level="WARNING") as cm:
+            nome = st.save("local.txt", ContentFile(b"dados"))
+        saida = "\n".join(cm.output)
+        # Caiu pro disco local e registrou o incidente sem emojis
+        self.assertTrue(st.local_storage.exists(nome))
+        self.assertNotIn("⚠️", saida)
+        self.assertNotIn("🛡️", saida)
+        self.assertIn("nuvem fora", saida)

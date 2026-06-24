@@ -21,16 +21,17 @@ class ToleranteS3Storage(S3Boto3Storage):
         quebrem a aplicação antes mesmo do upload começar.
         """
 
-        print(f"\n🚀 [ToleranteS3Storage] Interceptando upload do arquivo: {name}")
-        
+        # logger (não print): emoji em print quebra stdout cp1252 no Windows.
+        logger.debug(f"[ToleranteS3Storage] Interceptando upload do arquivo: {name}")
+
         try:
             # TENTA O FLUXO COMPLETO NA NUVEM
             return super().save(name, content, max_length=max_length)
         except Exception as e:
-            print(f"⚠️ [ToleranteS3Storage] NUVEM FORA DO AR! O erro foi: {e}")
-            print(f"🛡️ [ToleranteS3Storage] Salvando no disco local de emergência...")
-
-            logger.critical(f"Falha de nuvem ao salvar '{name}': {e}. Acionando disco local.")
+            logger.critical(
+                f"[ToleranteS3Storage] Falha de nuvem ao salvar '{name}': {e}. "
+                f"Acionando disco local de emergência."
+            )
             
             # Reposiciona o ponteiro de leitura do arquivo para o início (obrigatório)
             if hasattr(content, 'seek'):

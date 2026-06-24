@@ -234,6 +234,11 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                     ticket.maximo_id = sr["ticketid"]
                     ticket.save(update_fields=["maximo_id"])
 
+                    logger.info(
+                        f"Ticket #{ticket.id} criado com sucesso: SR {ticket.maximo_id} "
+                        f"aberta no Maximo via REST (user={request.user.username})."
+                    )
+
                     # Anexos -> DOCLINKS da SR recém-criada (href já vem na resposta).
                     doclinks_url = (sr.get("doclinks") or {}).get("href")
                     if not doclinks_url and sr.get("href"):
@@ -254,8 +259,16 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
 
                 else:
                     # Maximo REST indisponível -> fallback no e-mail pro Listener.
+                    logger.warning(
+                        f"Ticket #{ticket.id}: criar_sr REST falhou; usando fallback por "
+                        f"e-mail (Listener). O maximo_id sera recuperado pelo sincronizar_maximo."
+                    )
                     try:
                         MaximoEmailService.enviar_ticket_maximo(ticket, request.user, todos_anexos)
+                        logger.info(
+                            f"Ticket #{ticket.id} criado: enviado ao Maximo via e-mail fallback "
+                            f"(Listener) com sucesso (user={request.user.username})."
+                        )
                         messages.success(request, f"Ticket #{ticket.id} aberto com sucesso!")
 
                     except Exception as e:
@@ -271,6 +284,14 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
             except Exception as e:
                 logger.error(f"Erro ao criar ticket na base de dados: {e}")
                 messages.error(request, "Ocorreu um erro ao guardar o ticket. Tente novamente.")
+
+        else:
+            # Criação rejeitada na validação. Loga só os NOMES dos campos com erro
+            # (nunca os valores) para não vazar dados sensíveis no log.
+            logger.warning(
+                f"Criação de ticket REJEITADA (form inválido) user={request.user.username}; "
+                f"campos com erro: {list(form.errors.keys())}"
+            )
 
     else:
         form = TicketForm(user=request.user)
