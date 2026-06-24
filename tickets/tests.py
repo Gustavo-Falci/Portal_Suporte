@@ -961,3 +961,111 @@ class ToleranteStorageLoggingTests(SimpleTestCase):
         self.assertNotIn("⚠️", saida)
         self.assertNotIn("🛡️", saida)
         self.assertIn("nuvem fora", saida)
+
+
+class _SyncThread:
+    """Thread falsa que executa o target imediatamente (síncrono) nos testes,
+    para checar o efeito do upload de anexos sem corrida de thread real."""
+
+    def __init__(self, target=None, args=(), kwargs=None):
+        self._target = target
+        self._args = args
+        self._kwargs = kwargs or {}
+
+    def start(self):
+        self._target(*self._args, **self._kwargs)
+
+
+class CriarTicketRobustezTests(TestCase):
+    """Robustez da criação: falha do Maximo não vira erro de banco (#1) e
+    o estado de sincronização de anexos é rastreado (#2)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="rob@acme.com", username="rob", password="123",
+            location="ACME", person_id="P01",
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.ambiente = Ambiente.objects.create(nome_ambiente="ERP", numero_ativo="008")
+        self.ambiente.clientes.add(self.user)
+        self.client.force_login(self.user)
+
+    def _docx(self, nome="req.docx"):
+        return SimpleUploadedFile(
+            nome, b"PK\x03\x04docxbytes",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    def _png(self, nome="ev.png"):
+        return SimpleUploadedFile(nome, b"\x89PNG\r\n\x1a\nbytes", content_type="image/png")
+
+    def _data(self, **extra):
+        data = {
+            "sumario": "Erro no ERP",
+            "descricao": "Trava ao salvar",
+            "prioridade": "2",
+            "ambiente": self.ambiente.id,
+            "documento_requisicao": self._docx(),
+        }
+        data.update(extra)
+        return data
+
+    def _post(self, **extra):
+        return self.client.post(reverse("tickets:criar_ticket"), self._data(**extra))
+
+    # ---------- #1: falha do Maximo não vira erro de banco ----------
+
+    @patch("tickets.views.MaximoSenderService.criar_sr", side_effect=Exception("maximo explodiu"))
+    def test_falha_inesperada_maximo_nao_vira_erro_de_banco(self, mock_criar):
+        # Erro inesperado na integração NÃO deve re-renderizar o form com
+        # "erro ao guardar" (convite a reenvio/duplicado). Ticket fica salvo
+        # e o usuário é redirecionado para sucesso.
+        resp = self._post()
+        self.assertRedirects(resp, reverse("tickets:ticket_sucesso"))
+        self.assertTrue(Ticket.objects.filter(sumario="Erro no ERP").exists())
+
+    @patch("tickets.views.TicketAnexo.objects.create", side_effect=Exception("db down"))
+    def test_falha_persistencia_nao_cria_ticket(self, mock_create):
+        # Falha DENTRO da transação (ao salvar anexo) deve dar rollback total:
+        # nenhum ticket persiste, e o form é re-renderizado (status 200).
+        resp = self._post(arquivo=self._png())
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(sumario="Erro no ERP").exists())
+
+    # ---------- #2: rastreio de sincronização de anexos ----------
+
+    @patch("tickets.views.threading.Thread", _SyncThread)
+    @patch("tickets.views.MaximoSenderService.enviar_anexos_criacao", return_value=True)
+    @patch("tickets.views.MaximoSenderService.criar_sr")
+    def test_anexos_sincronizados_true_quando_upload_ok(self, mock_criar, mock_anexos):
+        mock_criar.return_value = {
+            "ticketid": "2277", "href": "https://mx/_A--",
+            "doclinks": {"href": "https://mx/_A--/doclinks"},
+        }
+        self._post()
+        t = Ticket.objects.get(sumario="Erro no ERP")
+        self.assertTrue(t.anexos_sincronizados)
+
+    @patch("tickets.views.threading.Thread", _SyncThread)
+    @patch("tickets.views.MaximoSenderService.enviar_anexos_criacao", return_value=False)
+    @patch("tickets.views.MaximoSenderService.criar_sr")
+    def test_anexos_sincronizados_false_quando_upload_falha(self, mock_criar, mock_anexos):
+        mock_criar.return_value = {
+            "ticketid": "2277", "href": "https://mx/_A--",
+            "doclinks": {"href": "https://mx/_A--/doclinks"},
+        }
+        self._post()
+        t = Ticket.objects.get(sumario="Erro no ERP")
+        self.assertFalse(t.anexos_sincronizados)
+
+    @patch("tickets.views.MaximoSenderService.enviar_anexos_criacao")
+    @patch("tickets.views.MaximoSenderService.criar_sr")
+    def test_anexos_sincronizados_false_quando_sr_sem_doclinks(self, mock_criar, mock_anexos):
+        # SR criada mas resposta sem doclinks/href -> anexos não podem subir.
+        mock_criar.return_value = {"ticketid": "2277"}
+        self._post()
+        t = Ticket.objects.get(sumario="Erro no ERP")
+        self.assertFalse(t.anexos_sincronizados)
+        mock_anexos.assert_not_called()

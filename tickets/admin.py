@@ -76,9 +76,10 @@ class TicketAdmin(admin.ModelAdmin):
         "prioridade",
         "status_maximo",
         "maximo_id",
+        "anexos_sincronizados",
         "data_criacao",
     )
-    list_filter = ("status_maximo", "prioridade", "data_criacao", "area")
+    list_filter = ("status_maximo", "prioridade", "anexos_sincronizados", "data_criacao", "area")
     search_fields = (
         "sumario",
         "descricao",

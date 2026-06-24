@@ -185,6 +185,79 @@ def meus_tickets(request: HttpRequest) -> HttpResponse:
 
 
 # CRIAR TICKET
+
+def _subir_anexos_criacao_e_marcar(ticket_id: int, doclinks_url: str, arquivos: list) -> None:
+    """Sobe os anexos da abertura aos DOCLINKS da SR e marca o resultado no
+    ticket. Roda em thread: usa update() (1 write atômico) e o ID (não a
+    instância) para não depender de estado compartilhado entre threads."""
+    ok = MaximoSenderService.enviar_anexos_criacao(doclinks_url, arquivos)
+    Ticket.objects.filter(pk=ticket_id).update(anexos_sincronizados=ok)
+    if not ok:
+        logger.error(
+            f"Ticket {ticket_id}: falha ao sincronizar {len(arquivos)} anexo(s) "
+            f"com o Maximo (DOCLINKS). anexos_sincronizados=False (pendente de retry)."
+        )
+
+
+def _integrar_maximo_criacao(request: HttpRequest, ticket: Ticket, todos_anexos: list) -> None:
+    """Cria a SR no Maximo via REST ou cai no e-mail (Listener). Isolado da
+    persistência: qualquer falha aqui é aviso, NUNCA rollback do ticket."""
+    sr = MaximoSenderService.criar_sr(ticket, request.user)
+
+    if sr:
+        ticket.maximo_id = sr["ticketid"]
+        ticket.save(update_fields=["maximo_id"])
+        logger.info(
+            f"Ticket #{ticket.id} criado com sucesso: SR {ticket.maximo_id} "
+            f"aberta no Maximo via REST (user={request.user.username})."
+        )
+
+        # Anexos -> DOCLINKS da SR recém-criada (href já vem na resposta).
+        doclinks_url = (sr.get("doclinks") or {}).get("href")
+        if not doclinks_url and sr.get("href"):
+            doclinks_url = f'{sr["href"]}/doclinks'
+
+        if todos_anexos and doclinks_url:
+            # Pendente até a thread confirmar o upload.
+            ticket.anexos_sincronizados = False
+            ticket.save(update_fields=["anexos_sincronizados"])
+            threading.Thread(
+                target=_subir_anexos_criacao_e_marcar,
+                args=(ticket.id, doclinks_url, todos_anexos),
+            ).start()
+        elif todos_anexos and not doclinks_url:
+            ticket.anexos_sincronizados = False
+            ticket.save(update_fields=["anexos_sincronizados"])
+            logger.warning(
+                f"Ticket {ticket.id}: SR {sr.get('ticketid')} criada mas sem doclinks_url; "
+                f"{len(todos_anexos)} anexo(s) NAO enviado(s) ao Maximo."
+            )
+
+        messages.success(request, f"Ticket #{ticket.id} aberto com sucesso!")
+
+    else:
+        # Maximo REST indisponível -> fallback no e-mail pro Listener.
+        logger.warning(
+            f"Ticket #{ticket.id}: criar_sr REST falhou; usando fallback por "
+            f"e-mail (Listener). O maximo_id sera recuperado pelo sincronizar_maximo."
+        )
+        try:
+            MaximoEmailService.enviar_ticket_maximo(ticket, request.user, todos_anexos)
+            logger.info(
+                f"Ticket #{ticket.id} criado: enviado ao Maximo via e-mail fallback "
+                f"(Listener) com sucesso (user={request.user.username})."
+            )
+            messages.success(request, f"Ticket #{ticket.id} aberto com sucesso!")
+
+        except Exception as e:
+            logger.error(f"Erro no envio de e-mail fallback (Ticket {ticket.id}): {e}")
+            messages.warning(
+                request,
+                "O ticket foi guardado no portal, mas houve um erro ao enviar a notificação para a nossa equipe de suporte. "
+                "Por favor, entre em contato via telefone ou chat para confirmar a receção."
+            )
+
+
 @login_required(login_url="/login/")
 def criar_ticket(request: HttpRequest) -> HttpResponse:
 
@@ -192,98 +265,53 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
         form = TicketForm(request.POST, request.FILES, user=request.user)
 
         if form.is_valid():
+            # 1. Persistência (transação isolada). Falha AQUI é erro real:
+            #    rollback total + erro + re-render do form (permite retry sem
+            #    deixar ticket órfão e sem convidar a reenvio/duplicação).
             try:
                 with transaction.atomic():
-                    # 1. Prepara e salva o Ticket com o Documento de Requisição
                     ticket = form.save(commit=False)
                     ticket.cliente = request.user
-                    
+
                     doc_requisicao = request.FILES.get("documento_requisicao")
                     if doc_requisicao:
                         ticket.documento_requisicao = doc_requisicao
 
                     ticket.save()
 
-                    # 2. Processa e salva Anexos Opcionais
-                    anexos_upload = request.FILES.getlist("arquivo")
-                    if anexos_upload:
-                        for arquivo_temp in anexos_upload:
-                            TicketAnexo.objects.create(ticket=ticket, arquivo=arquivo_temp)
-
-                # Ticket persistido — registra criação na trilha de auditoria
-                # (independente do resultado do envio de e-mail abaixo)
-                audit.registrar(request.user, f"criou Ticket #{ticket.id}")
-
-                # Resgatamos os ficheiros seguros e guardados da base de dados
-                todos_anexos = []
-                
-                # A. Documento de Requisição (obrigatório)
-                if ticket.documento_requisicao:
-                    todos_anexos.append(ticket.documento_requisicao)
-
-                # B. Evidências adicionais
-                for anexo_obj in ticket.anexos.all():
-                    todos_anexos.append(anexo_obj.arquivo)
-
-                # 3. Criação da SR no Maximo via REST (síncrono).
-                #    Fallback: se o REST falhar, cai no e-mail antigo (Listener) e
-                #    o sincronizar_maximo recupera o maximo_id por texto depois.
-                sr = MaximoSenderService.criar_sr(ticket, request.user)
-
-                if sr:
-                    ticket.maximo_id = sr["ticketid"]
-                    ticket.save(update_fields=["maximo_id"])
-
-                    logger.info(
-                        f"Ticket #{ticket.id} criado com sucesso: SR {ticket.maximo_id} "
-                        f"aberta no Maximo via REST (user={request.user.username})."
-                    )
-
-                    # Anexos -> DOCLINKS da SR recém-criada (href já vem na resposta).
-                    doclinks_url = (sr.get("doclinks") or {}).get("href")
-                    if not doclinks_url and sr.get("href"):
-                        doclinks_url = f'{sr["href"]}/doclinks'
-
-                    if todos_anexos and doclinks_url:
-                        threading.Thread(
-                            target=MaximoSenderService.enviar_anexos_criacao,
-                            args=(doclinks_url, todos_anexos),
-                        ).start()
-                    elif todos_anexos and not doclinks_url:
-                        logger.warning(
-                            f"Ticket {ticket.id}: SR {sr.get('ticketid')} criada mas sem doclinks_url; "
-                            f"{len(todos_anexos)} anexo(s) NAO enviado(s) ao Maximo."
-                        )
-
-                    messages.success(request, f"Ticket #{ticket.id} aberto com sucesso!")
-
-                else:
-                    # Maximo REST indisponível -> fallback no e-mail pro Listener.
-                    logger.warning(
-                        f"Ticket #{ticket.id}: criar_sr REST falhou; usando fallback por "
-                        f"e-mail (Listener). O maximo_id sera recuperado pelo sincronizar_maximo."
-                    )
-                    try:
-                        MaximoEmailService.enviar_ticket_maximo(ticket, request.user, todos_anexos)
-                        logger.info(
-                            f"Ticket #{ticket.id} criado: enviado ao Maximo via e-mail fallback "
-                            f"(Listener) com sucesso (user={request.user.username})."
-                        )
-                        messages.success(request, f"Ticket #{ticket.id} aberto com sucesso!")
-
-                    except Exception as e:
-                        logger.error(f"Erro no envio de e-mail fallback (Ticket {ticket.id}): {e}")
-                        messages.warning(
-                            request,
-                            "O ticket foi guardado no portal, mas houve um erro ao enviar a notificação para a nossa equipe de suporte. "
-                            "Por favor, entre em contato via telefone ou chat para confirmar a receção."
-                        )
-
-                return redirect("tickets:ticket_sucesso")
+                    for arquivo_temp in request.FILES.getlist("arquivo"):
+                        TicketAnexo.objects.create(ticket=ticket, arquivo=arquivo_temp)
 
             except Exception as e:
-                logger.error(f"Erro ao criar ticket na base de dados: {e}")
+                logger.error(
+                    f"Erro ao persistir ticket no banco (user={request.user.username}): {e}"
+                )
                 messages.error(request, "Ocorreu um erro ao guardar o ticket. Tente novamente.")
+                return render(request, "tickets/criar_ticket.html", {"form": form})
+
+            # A PARTIR DAQUI o ticket está GARANTIDAMENTE salvo. Nada abaixo pode
+            # provocar rollback nem mostrar "erro ao guardar" (evita duplicação:
+            # falha de integração não deve fazer o usuário reenviar o formulário).
+            audit.registrar(request.user, f"criou Ticket #{ticket.id}")
+
+            todos_anexos = []
+            if ticket.documento_requisicao:
+                todos_anexos.append(ticket.documento_requisicao)
+            for anexo_obj in ticket.anexos.all():
+                todos_anexos.append(anexo_obj.arquivo)
+
+            # 2. Integração Maximo — isolada; falha inesperada vira aviso, não erro.
+            try:
+                _integrar_maximo_criacao(request, ticket, todos_anexos)
+            except Exception as e:
+                logger.error(f"Erro inesperado na integração Maximo (Ticket {ticket.id}): {e}")
+                messages.warning(
+                    request,
+                    "Ticket criado, mas houve instabilidade ao registrar no Maximo. "
+                    "Nossa equipe foi avisada e fará o acompanhamento."
+                )
+
+            return redirect("tickets:ticket_sucesso")
 
         else:
             # Criação rejeitada na validação. Loga só os NOMES dos campos com erro

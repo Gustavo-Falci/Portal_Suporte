@@ -181,6 +181,14 @@ class Ticket(models.Model):
         verbose_name="Status Atual",
     )
 
+    # Rastreia se os anexos da abertura subiram aos DOCLINKS da SR (via REST).
+    # True por padrão (sem anexos ou enviados via e-mail fallback); vira False
+    # enquanto o upload está pendente/em falha, permitindo retry e visibilidade.
+    anexos_sincronizados = models.BooleanField(
+        default=True,
+        verbose_name="Anexos sincronizados com o Maximo",
+    )
+
     owner = models.CharField(
         max_length=50, 
         blank=True, 
