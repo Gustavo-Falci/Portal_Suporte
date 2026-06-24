@@ -299,9 +299,110 @@ class MaximoSenderService:
     """
     Serviço responsável por enviar interações do Portal para o IBM Maximo (Worklogs).
     """
-    
+
     # URL configurada conforme seu POSTMAN
     MAXIMO_API_URL = getattr(settings, 'MAXIMO_API_URL_LOG', '')
+
+    # SiteID fixo da operação (era hardcoded no corpo do e-mail do Listener)
+    MAXIMO_SITEID = "ITCBR"
+
+    @classmethod
+    def criar_sr(cls, ticket: Ticket, usuario: Cliente) -> dict | None:
+
+        """
+        Cria a Service Request (SR) diretamente no Maximo via REST (POST no
+        Object Structure ITC_PORTAL_API), substituindo o fluxo por e-mail.
+
+        O Maximo devolve o 'ticketid' de forma SÍNCRONA (header 'properties: *'),
+        dispensando o match por texto do 'sincronizar_maximo'. A resposta também
+        traz 'doclinks.href', usado para subir anexos sem GET extra.
+
+        Retorna o registro da SR (dict) em caso de sucesso, ou None em falha.
+        O chamador persiste ticket.maximo_id e dispara os anexos.
+        """
+
+        base_url = getattr(settings, 'MAXIMO_API_URL', '')
+        if not base_url:
+            logger.error("MAXIMO_API_URL não configurada; impossível criar SR via REST.")
+            return None
+
+        # Obrigatórios (Maximo auto-preenche status/reportdate/orgid)
+        payload = {
+            "class": "SR",
+            "siteid": cls.MAXIMO_SITEID,
+            "description": strip_tags(ticket.sumario),
+            "description_longdescription": strip_tags(ticket.descricao),
+        }
+
+        # Prioridade: Maximo espera inteiro (1/2/3)
+        try:
+            payload["reportedpriority"] = int(ticket.prioridade)
+        except (TypeError, ValueError):
+            logger.warning(
+                f"Prioridade inválida no Ticket {ticket.id} ('{ticket.prioridade}'); "
+                "SR criada sem reportedpriority."
+            )
+
+        # Opcionais: só enviados quando preenchidos (evita BMXAA por valor vazio)
+        if ticket.ambiente and ticket.ambiente.numero_ativo:
+            payload["assetnum"] = ticket.ambiente.numero_ativo
+
+        if ticket.area:
+            payload["itc_area"] = ticket.area.nome_area
+
+        location = getattr(usuario, "location", None)
+        if location:
+            payload["location"] = location
+
+        # Solicitante: afetado e reportado são o mesmo cliente do portal
+        person_id = getattr(usuario, "person_id", None)
+        if person_id:
+            payload["affectedpersonid"] = person_id
+            payload["reportedby"] = person_id
+
+        # 'properties: *' força o Maximo a devolver o registro criado (ticketid + doclinks)
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "properties": "*",
+            "apikey": getattr(settings, 'MAXIMO_API_KEY', ''),
+        }
+
+        verify_ssl = getattr(settings, 'MAXIMO_VERIFY_SSL', True)
+
+        try:
+            logger.info(f"Criando SR no Maximo via REST para Ticket #{ticket.id}...")
+
+            response = requests.post(
+                base_url,
+                params={"lean": 1},
+                data=json.dumps(payload),
+                headers=headers,
+                verify=verify_ssl,
+                timeout=15,
+            )
+
+            if response.status_code not in (200, 201):
+                logger.error(
+                    f"Erro ao criar SR (Ticket {ticket.id}) "
+                    f"[{response.status_code}]: {response.text}"
+                )
+                return None
+
+            data = response.json()
+            ticketid = data.get("ticketid")
+            if not ticketid:
+                logger.error(
+                    f"SR criada para Ticket {ticket.id} mas resposta sem ticketid: {data}"
+                )
+                return None
+
+            logger.info(f"SR #{ticketid} criada no Maximo (Ticket local {ticket.id}).")
+            return data
+
+        except Exception as e:
+            logger.error(f"Exceção ao criar SR no Maximo (Ticket {ticket.id}): {e}")
+            return None
 
     @staticmethod
     def enviar_interacao(ticket: Ticket, interacao: TicketInteracao) -> bool:
@@ -425,6 +526,72 @@ class MaximoSenderService:
             logger.error(f"Exceção ao localizar SR #{maximo_id} no Maximo: {e}")
             return None
 
+    @staticmethod
+    def _post_doclink(doclinks_url: str, arquivo, apikey: str) -> bool:
+
+        """
+        Envia UM arquivo (FieldFile/UploadedFile) para a URL de doclinks de uma SR.
+        Lê os bytes raw e POSTa com os headers de metadado do Maximo.
+        """
+
+        try:
+            arquivo.open('rb')
+            arquivo.seek(0)
+            conteudo = arquivo.read()
+            nome = os.path.basename(arquivo.name)
+            content_type = mimetypes.guess_type(nome)[0] or 'application/octet-stream'
+
+            headers = {
+                "Content-Type": content_type,
+                "slug": nome,
+                "x-document-meta": "FILE/Attachments",
+                "x-document-description": f"Anexo do portal - {nome}",
+                "apikey": apikey,
+            }
+
+            resp = requests.post(
+                doclinks_url,
+                data=conteudo,
+                headers=headers,
+                verify=getattr(settings, 'MAXIMO_VERIFY_SSL', True),
+                timeout=30,
+            )
+
+            if resp.status_code in (200, 201, 204):
+                logger.info(f"Anexo '{nome}' enviado para {doclinks_url}")
+                return True
+
+            logger.error(f"Erro DOCLINKS '{nome}' ({resp.status_code}): {resp.text}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Exceção ao enviar anexo '{getattr(arquivo, 'name', '?')}': {e}")
+            return False
+
+        finally:
+            if hasattr(arquivo, 'closed') and not arquivo.closed:
+                arquivo.close()
+
+    @classmethod
+    def enviar_anexos_criacao(cls, doclinks_url: str, arquivos: list) -> bool:
+
+        """
+        Sobe anexos da abertura do ticket (documento de requisição + evidências)
+        para os DOCLINKS da SR recém-criada via REST. O doclinks_url já vem na
+        resposta de criar_sr() — não precisa do GET de _get_member_href.
+        Roda em thread na view para não bloquear o usuário.
+        """
+
+        if not arquivos:
+            return True
+
+        apikey = getattr(settings, 'MAXIMO_API_KEY', '')
+        sucesso_total = True
+        for arquivo in arquivos:
+            if not cls._post_doclink(doclinks_url, arquivo, apikey):
+                sucesso_total = False
+        return sucesso_total
+
     @classmethod
     def enviar_anexos(cls, ticket: Ticket, anexos: list) -> bool:
 
@@ -451,41 +618,7 @@ class MaximoSenderService:
         sucesso_total = True
 
         for anexo in anexos:
-            try:
-                anexo.arquivo.open('rb')
-                anexo.arquivo.seek(0)
-                conteudo = anexo.arquivo.read()
-                nome = os.path.basename(anexo.arquivo.name)
-                content_type = mimetypes.guess_type(nome)[0] or 'application/octet-stream'
-
-                headers = {
-                    "Content-Type": content_type,
-                    "slug": nome,
-                    "x-document-meta": "FILE/Attachments",
-                    "x-document-description": f"Anexo do chat - {nome}",
-                    "apikey": apikey,
-                }
-
-                resp = requests.post(
-                    doclinks_url,
-                    data=conteudo,
-                    headers=headers,
-                    verify=False,
-                    timeout=30,
-                )
-
-                if resp.status_code in [200, 201, 204]:
-                    logger.info(f"Anexo '{nome}' enviado ao Maximo SR #{ticket.maximo_id}")
-                else:
-                    logger.error(f"Erro DOCLINKS '{nome}' ({resp.status_code}): {resp.text}")
-                    sucesso_total = False
-
-            except Exception as e:
-                logger.error(f"Exceção ao enviar anexo '{getattr(anexo.arquivo, 'name', '?')}' ao Maximo: {e}")
+            if not cls._post_doclink(doclinks_url, anexo.arquivo, apikey):
                 sucesso_total = False
-
-            finally:
-                if hasattr(anexo.arquivo, 'closed') and not anexo.arquivo.closed:
-                    anexo.arquivo.close()
 
         return sucesso_total

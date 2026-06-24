@@ -637,3 +637,212 @@ class AuditarVinculosTests(TestCase):
         out = cmd._buf.getvalue()
         self.assertNotIn("[SUSPEITO]", out)
         self.assertIn("Nenhum vínculo suspeito encontrado.", out)
+
+
+import json as _json
+from unittest.mock import MagicMock
+from django.core.files.uploadedfile import SimpleUploadedFile
+
+
+class CriarSRTests(TestCase):
+    """Criação da SR no Maximo via REST (substitui e-mail Listener)."""
+
+    def setUp(self):
+        self.user = Cliente.objects.create(
+            email="sr@teste.com", username="sr_user",
+            location="PAMPA", person_id="PESSOA01",
+        )
+        self.ambiente = Ambiente.objects.create(
+            nome_ambiente="ERP", numero_ativo="008"
+        )
+        self.ambiente.clientes.add(self.user)
+        self.area = Area.objects.create(nome_area="Financeiro")
+        self.ticket = Ticket.objects.create(
+            cliente=self.user, sumario="Erro no ERP",
+            descricao="Trava ao salvar", prioridade="2",
+            ambiente=self.ambiente, area=self.area,
+        )
+
+    def _resp(self, status, body):
+        m = MagicMock()
+        m.status_code = status
+        m.json.return_value = body
+        m.text = _json.dumps(body)
+        return m
+
+    @patch("tickets.services.requests.post")
+    def test_sucesso_retorna_record_com_ticketid(self, mock_post):
+        mock_post.return_value = self._resp(201, {
+            "ticketid": "2277",
+            "href": "https://mx/os/ITC_PORTAL_API/_ABC--",
+            "doclinks": {"href": "https://mx/os/ITC_PORTAL_API/_ABC--/doclinks"},
+        })
+        sr = MaximoSenderService.criar_sr(self.ticket, self.user)
+        self.assertIsNotNone(sr)
+        self.assertEqual(sr["ticketid"], "2277")
+
+    @patch("tickets.services.requests.post")
+    def test_monta_payload_completo(self, mock_post):
+        mock_post.return_value = self._resp(201, {"ticketid": "1"})
+        MaximoSenderService.criar_sr(self.ticket, self.user)
+        enviado = _json.loads(mock_post.call_args.kwargs["data"])
+        self.assertEqual(enviado["class"], "SR")
+        self.assertEqual(enviado["siteid"], "ITCBR")
+        self.assertEqual(enviado["description"], "Erro no ERP")
+        self.assertEqual(enviado["description_longdescription"], "Trava ao salvar")
+        self.assertEqual(enviado["reportedpriority"], 2)  # inteiro, não "2"
+        self.assertEqual(enviado["assetnum"], "008")
+        self.assertEqual(enviado["itc_area"], "Financeiro")
+        self.assertEqual(enviado["location"], "PAMPA")
+        self.assertEqual(enviado["affectedpersonid"], "PESSOA01")
+        self.assertEqual(enviado["reportedby"], "PESSOA01")
+
+    @patch("tickets.services.requests.post")
+    def test_omite_campos_opcionais_vazios(self, mock_post):
+        mock_post.return_value = self._resp(201, {"ticketid": "1"})
+        user2 = Cliente.objects.create(email="x@x.com", username="x")  # sem location/person_id
+        ticket2 = Ticket.objects.create(
+            cliente=user2, sumario="s", descricao="d", prioridade="3",
+        )  # sem ambiente/area
+        MaximoSenderService.criar_sr(ticket2, user2)
+        enviado = _json.loads(mock_post.call_args.kwargs["data"])
+        for chave in ("assetnum", "itc_area", "location", "affectedpersonid", "reportedby"):
+            self.assertNotIn(chave, enviado)
+
+    @patch("tickets.services.requests.post")
+    def test_prioridade_invalida_e_omitida(self, mock_post):
+        mock_post.return_value = self._resp(201, {"ticketid": "1"})
+        self.ticket.prioridade = ""
+        self.ticket.save()
+        sr = MaximoSenderService.criar_sr(self.ticket, self.user)
+        enviado = _json.loads(mock_post.call_args.kwargs["data"])
+        self.assertNotIn("reportedpriority", enviado)
+        self.assertIsNotNone(sr)
+
+    @patch("tickets.services.requests.post")
+    def test_falha_http_retorna_none(self, mock_post):
+        mock_post.return_value = self._resp(500, {"Error": "down"})
+        self.assertIsNone(MaximoSenderService.criar_sr(self.ticket, self.user))
+
+    @patch("tickets.services.requests.post")
+    def test_resposta_sem_ticketid_retorna_none(self, mock_post):
+        mock_post.return_value = self._resp(201, {"description": "criou mas sem id"})
+        self.assertIsNone(MaximoSenderService.criar_sr(self.ticket, self.user))
+
+    @patch("tickets.services.requests.post", side_effect=Exception("timeout"))
+    def test_excecao_retorna_none(self, mock_post):
+        self.assertIsNone(MaximoSenderService.criar_sr(self.ticket, self.user))
+
+
+class DoclinkUploadTests(TestCase):
+    """Upload de anexos para os DOCLINKS de uma SR (fluxo de criação REST)."""
+
+    def _arquivo(self, nome="evidencia.png"):
+        return SimpleUploadedFile(nome, b"\x89PNG\r\n\x1a\nconteudo", content_type="image/png")
+
+    @patch("tickets.services.requests.post")
+    def test_post_doclink_sucesso(self, mock_post):
+        mock_post.return_value.status_code = 201
+        ok = MaximoSenderService._post_doclink(
+            "https://mx/_ABC--/doclinks", self._arquivo(), "KEY"
+        )
+        self.assertTrue(ok)
+        headers = mock_post.call_args.kwargs["headers"]
+        self.assertEqual(headers["slug"], "evidencia.png")
+        self.assertEqual(headers["apikey"], "KEY")
+        self.assertEqual(headers["Content-Type"], "image/png")
+
+    @patch("tickets.services.requests.post")
+    def test_post_doclink_falha(self, mock_post):
+        mock_post.return_value.status_code = 500
+        mock_post.return_value.text = "erro"
+        ok = MaximoSenderService._post_doclink(
+            "https://mx/_ABC--/doclinks", self._arquivo(), "KEY"
+        )
+        self.assertFalse(ok)
+
+    @patch("tickets.services.requests.post")
+    def test_enviar_anexos_criacao_envia_todos(self, mock_post):
+        mock_post.return_value.status_code = 201
+        ok = MaximoSenderService.enviar_anexos_criacao(
+            "https://mx/_ABC--/doclinks",
+            [self._arquivo("a.png"), self._arquivo("b.png")],
+        )
+        self.assertTrue(ok)
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertEqual(mock_post.call_args.kwargs["data"] is not None, True)
+
+    @patch("tickets.services.requests.post")
+    def test_enviar_anexos_criacao_lista_vazia_nao_chama_api(self, mock_post):
+        ok = MaximoSenderService.enviar_anexos_criacao("https://mx/_ABC--/doclinks", [])
+        self.assertTrue(ok)
+        mock_post.assert_not_called()
+
+    @patch("tickets.services.requests.post")
+    def test_enviar_anexos_criacao_uma_falha_retorna_false(self, mock_post):
+        r_ok = MagicMock(); r_ok.status_code = 201
+        r_bad = MagicMock(); r_bad.status_code = 500; r_bad.text = "x"
+        mock_post.side_effect = [r_ok, r_bad]
+        ok = MaximoSenderService.enviar_anexos_criacao(
+            "https://mx/_ABC--/doclinks",
+            [self._arquivo("a.png"), self._arquivo("b.png")],
+        )
+        self.assertFalse(ok)
+
+
+class CriarTicketViewRESTTests(TestCase):
+    """View criar_ticket usa REST (criar_sr) e cai no e-mail só em falha."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="abre@acme.com", username="abre", password="123",
+            location="ACME", person_id="P01",
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.ambiente = Ambiente.objects.create(nome_ambiente="ERP", numero_ativo="008")
+        self.ambiente.clientes.add(self.user)
+        self.client.force_login(self.user)
+
+    def _docx(self, nome="req.docx"):
+        # Header PK -> categoria zip (docx). MIME .docx está na allowlist do form.
+        return SimpleUploadedFile(
+            nome, b"PK\x03\x04docxbytes",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    def _post_valido(self):
+        data = {
+            "sumario": "Erro no ERP",
+            "descricao": "Trava ao salvar",
+            "prioridade": "2",
+            "ambiente": self.ambiente.id,
+            "documento_requisicao": self._docx(),
+        }
+        return self.client.post(reverse("tickets:criar_ticket"), data)
+
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo")
+    @patch("tickets.views.MaximoSenderService.enviar_anexos_criacao")
+    @patch("tickets.views.MaximoSenderService.criar_sr")
+    def test_sucesso_rest_grava_maximo_id_sem_email(self, mock_criar, mock_anexos, mock_email):
+        mock_criar.return_value = {
+            "ticketid": "2277",
+            "href": "https://mx/_ABC--",
+            "doclinks": {"href": "https://mx/_ABC--/doclinks"},
+        }
+        resp = self._post_valido()
+        self.assertRedirects(resp, reverse("tickets:ticket_sucesso"))
+        ticket = Ticket.objects.get(sumario="Erro no ERP")
+        self.assertEqual(ticket.maximo_id, "2277")
+        mock_criar.assert_called_once()
+        mock_email.assert_not_called()
+
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo")
+    @patch("tickets.views.MaximoSenderService.criar_sr", return_value=None)
+    def test_falha_rest_cai_no_email(self, mock_criar, mock_email):
+        resp = self._post_valido()
+        self.assertRedirects(resp, reverse("tickets:ticket_sucesso"))
+        ticket = Ticket.objects.get(sumario="Erro no ERP")
+        self.assertIsNone(ticket.maximo_id)
+        mock_email.assert_called_once()

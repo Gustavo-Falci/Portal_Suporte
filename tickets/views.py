@@ -225,18 +225,46 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                 for anexo_obj in ticket.anexos.all():
                     todos_anexos.append(anexo_obj.arquivo)
 
-                # 3. Envio de E-mail ao Suporte (Maximo Listener)
-                try:
-                    MaximoEmailService.enviar_ticket_maximo(ticket, request.user, todos_anexos)
+                # 3. Criação da SR no Maximo via REST (síncrono).
+                #    Fallback: se o REST falhar, cai no e-mail antigo (Listener) e
+                #    o sincronizar_maximo recupera o maximo_id por texto depois.
+                sr = MaximoSenderService.criar_sr(ticket, request.user)
+
+                if sr:
+                    ticket.maximo_id = sr["ticketid"]
+                    ticket.save(update_fields=["maximo_id"])
+
+                    # Anexos -> DOCLINKS da SR recém-criada (href já vem na resposta).
+                    doclinks_url = (sr.get("doclinks") or {}).get("href")
+                    if not doclinks_url and sr.get("href"):
+                        doclinks_url = f'{sr["href"]}/doclinks'
+
+                    if todos_anexos and doclinks_url:
+                        threading.Thread(
+                            target=MaximoSenderService.enviar_anexos_criacao,
+                            args=(doclinks_url, todos_anexos),
+                        ).start()
+                    elif todos_anexos and not doclinks_url:
+                        logger.warning(
+                            f"Ticket {ticket.id}: SR {sr.get('ticketid')} criada mas sem doclinks_url; "
+                            f"{len(todos_anexos)} anexo(s) NAO enviado(s) ao Maximo."
+                        )
+
                     messages.success(request, f"Ticket #{ticket.id} aberto com sucesso!")
 
-                except Exception as e:
-                    logger.error(f"Erro no envio de e-mail (Ticket {ticket.id}): {e}")
-                    messages.warning(
-                        request, 
-                        "O ticket foi guardado no portal, mas houve um erro ao enviar a notificação para a nossa equipe de suporte. "
-                        "Por favor, entre em contato via telefone ou chat para confirmar a receção."
-                    )
+                else:
+                    # Maximo REST indisponível -> fallback no e-mail pro Listener.
+                    try:
+                        MaximoEmailService.enviar_ticket_maximo(ticket, request.user, todos_anexos)
+                        messages.success(request, f"Ticket #{ticket.id} aberto com sucesso!")
+
+                    except Exception as e:
+                        logger.error(f"Erro no envio de e-mail fallback (Ticket {ticket.id}): {e}")
+                        messages.warning(
+                            request,
+                            "O ticket foi guardado no portal, mas houve um erro ao enviar a notificação para a nossa equipe de suporte. "
+                            "Por favor, entre em contato via telefone ou chat para confirmar a receção."
+                        )
 
                 return redirect("tickets:ticket_sucesso")
 
