@@ -1,0 +1,24 @@
+# Normaliza line endings: evita divergência CRLF/LF entre Windows (dev) e Linux (prod).
+* text=auto eol=lf
+
+# Arquivos de código/config sempre LF
+*.py   text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+*.js   text eol=lf
+*.txt  text eol=lf
+*.md   text eol=lf
+*.cfg  text eol=lf
+*.ini  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Binários: nunca tocar
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.woff  binary
+*.woff2 binary

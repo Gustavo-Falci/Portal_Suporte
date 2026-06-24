@@ -11,14 +11,16 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
+from csp.constants import SELF, NONCE, NONE
 from django.contrib.messages import constants as messages
 
-# Carrega o .env
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+env_path = os.path.join(BASE_DIR, '.env')
+load_dotenv(env_path)
 
 
 # CONFIGURAÇÕES BÁSICAS
@@ -28,11 +30,14 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Converte a string 'True'/'False' do .env para booleano do Python
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+# Converte a string 'True'/'False' do .env para booleano do Python.
+# Default FALSE (fail-safe): produção nunca liga DEBUG por esquecimento de env.
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = ['portal-suporte.iiotconsol.com', 'www.portal-suporte.iiotconsol.com', '137.131.143.72', 'localhost']
-
+# Lê da env (lista separada por vírgula). Local: ALLOWED_HOSTS=localhost,127.0.0.1
+ALLOWED_HOSTS = [
+    h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()
+]
 
 # APLICAÇÕES E MIDDLEWARE
 
@@ -43,11 +48,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "tickets.apps.TicketsConfig", # App
+    "tickets.apps.TicketsConfig",
+    'storages',
+    'axes',  # Rate-limit / lockout de login (brute-force)
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "csp.middleware.CSPMiddleware",  # Content-Security-Policy (gera nonce + header)
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -55,6 +63,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "tickets.middleware.RequestLogMiddleware",
+    # AxesMiddleware deve ser o ÚLTIMO: intercepta o request bloqueado e
+    # devolve a resposta de lockout antes de chegar na view de login.
+    "axes.middleware.AxesMiddleware",
 ]
 
 ROOT_URLCONF = "portal_suporte.urls"
@@ -131,8 +143,8 @@ STATICFILES_DIRS = [
 # Onde o Django vai "juntar" tudo no deploy (Railway usa essa pasta)
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# Engine de compressão do Whitenoise
-STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
+# Engine de compressão do Whitenoise (Manifest = nome com hash, evita cache de CSS velho após deploy)
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Uploads (Anexos)
 MEDIA_URL = '/media/'
@@ -150,9 +162,28 @@ LOGIN_REDIRECT_URL = "tickets:pagina_inicial"
 LOGOUT_REDIRECT_URL = "tickets:login"
 
 AUTHENTICATION_BACKENDS = [
-    "tickets.backend.EmailBackend", 
+    # AxesStandaloneBackend PRIMEIRO: barra credenciais bloqueadas antes de
+    # qualquer verificação de senha. Retorna None se não estiver bloqueado.
+    "axes.backends.AxesStandaloneBackend",
+    "tickets.backend.EmailBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
+
+# CONFIGURAÇÃO DJANGO-AXES (proteção brute-force no login)
+AXES_FAILURE_LIMIT = 5                       # tentativas antes de bloquear
+AXES_COOLOFF_TIME = timedelta(minutes=30)    # tempo de bloqueio
+# Bloqueia o par IP+usuário (não o usuário globalmente) — evita que um atacante
+# tranque a conta de uma vítima legítima a partir de outro IP (DoS).
+AXES_LOCKOUT_PARAMETERS = [["ip_address", "username"]]
+AXES_RESET_ON_SUCCESS = True                 # login OK zera o contador do par
+AXES_USERNAME_FORM_FIELD = "username"        # campo do EmailAuthenticationForm
+AXES_LOCKOUT_TEMPLATE = "tickets/lockout.html"
+AXES_VERBOSE = True
+# Atrás de proxy reverso (SECURE_PROXY_SSL_HEADER já em uso): se o proxy
+# repassa o IP real em X-Forwarded-For, descomente e ajuste a contagem de
+# proxies. Mantido em REMOTE_ADDR por padrão p/ evitar spoof de XFF.
+# AXES_IPWARE_PROXY_COUNT = 1
+# AXES_IPWARE_META_PRECEDENCE_ORDER = ("HTTP_X_FORWARDED_FOR", "REMOTE_ADDR")
 
 
 
@@ -175,15 +206,56 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # CONFIGURAÇÕES DE SEGURANÇA E AMBIENTE
 
+# Headers de segurança sempre ativos (sem custo em dev, protegem em prod)
+SECURE_CONTENT_TYPE_NOSNIFF = True            # X-Content-Type-Options: nosniff
+SECURE_REFERRER_POLICY = "same-origin"        # Referrer-Policy
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"  # COOP (isola janela)
+X_FRAME_OPTIONS = "DENY"                       # Clickjacking (reforça frame-ancestors do CSP)
+
+# Headers que dependem de HTTPS — só em produção
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 31536000 
+    SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_BROWSER_XSS_FILTER = True
-    SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# CONTENT-SECURITY-POLICY (django-csp)
+# Fontes externas mapeadas do inventário dos templates: Bootstrap (jsdelivr),
+# Font Awesome (cdnjs), Google Fonts. Scripts inline usam nonce.
+_CSP_POLICY = {
+    "DIRECTIVES": {
+        "default-src": [SELF],
+        "script-src": [SELF, NONCE, "https://cdn.jsdelivr.net"],
+        "style-src": [
+            SELF, "'unsafe-inline'",  # inline style="" attrs nos templates
+            "https://cdn.jsdelivr.net",
+            "https://cdnjs.cloudflare.com",
+            "https://fonts.googleapis.com",
+        ],
+        "font-src": [
+            SELF,
+            "https://cdn.jsdelivr.net",
+            "https://cdnjs.cloudflare.com",
+            "https://fonts.gstatic.com",
+        ],
+        "img-src": [SELF, "data:"],
+        "connect-src": [SELF, "https://cdn.jsdelivr.net"],
+        "frame-ancestors": [NONE],
+        "base-uri": [SELF],
+        "form-action": [SELF],
+        "object-src": [NONE],
+    }
+}
+
+# Rollout: começa em Report-Only (não quebra nada, só reporta no console do
+# browser). Depois de validar zero violações, suba CSP_ENFORCE=True no .env.
+if os.getenv("CSP_ENFORCE", "False") == "True":
+    CONTENT_SECURITY_POLICY = _CSP_POLICY
+else:
+    CONTENT_SECURITY_POLICY_REPORT_ONLY = _CSP_POLICY
 
 # CSRF para Deploy (Permite POST vindo do seu domínio https)
 CSRF_TRUSTED_ORIGINS = ['https://portal-suporte.iiotconsol.com','https://www.portal-suporte.iiotconsol.com']
@@ -203,9 +275,129 @@ MAXIMO_API_KEY = os.getenv('MAXIMO_API_KEY')
 
 MAXIMO_VERIFY_SSL = os.getenv('VERIFY', 'True').lower() == 'true'
 
-# Limite máximo do corpo da requisição (ex: 10MB)
-# O padrão é 2.5MB. Se você quer aceitar arquivos de 5MB + dados do form, ponha 10MB.
-DATA_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 10 MB
+# Corpo de form (NÃO inclui arquivos de upload, que o Django trata à parte).
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 
-# Limite máximo de um arquivo individual (ex: 5MB)
-FILE_UPLOAD_MAX_MEMORY_SIZE = 150 * 1024 * 1024   # 150 MB
+# Threshold de buffer em RAM: acima disso o upload vai pro disco temporário
+# em vez de ficar na memória. Mantém baixo p/ evitar DoS por exaustão de RAM.
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024 + 512 * 1024  # 2.5 MB
+
+# Limite-duro de tamanho de um anexo individual (validado em forms.py).
+# Desacoplado do buffer acima: arquivos entre 2.5MB e este valor streamam pro disco.
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
+
+SITE_URL = os.getenv("SITE_URL", "http://localhost:8000" if DEBUG else "https://portal-suporte.iiotconsol.com")
+
+# URL do admin (mantida secreta via .env em produção; normalizada com barra final).
+ADMIN_URL = os.getenv("ADMIN_URL", "admin/").strip("/") + "/"
+
+# CONFIGURAÇÃO DE LOGS (LOGGING)
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    # Filtro p/ silenciar spam de "Invalid HTTP_HOST header" (scanners batendo
+    # com Host inválido). Aplicado no handler de arquivo.
+    'filters': {
+        'ignore_disallowed_host': {
+            '()': 'django.utils.log.CallbackFilter',
+            'callback': lambda record: 'Invalid HTTP_HOST header' not in record.getMessage(),
+        },
+    },
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {module} - {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'portal_suporte.log'),
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB por arquivo
+            'backupCount': 10,              # Mantém até 10 backups (100 MB total)
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
+            'filters': ['ignore_disallowed_host'],
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'WARNING', # O Django só vai logar no arquivo se for Warning ou Erro
+            'propagate': True,
+        },
+        'django.request': {
+            'handlers': ['file'],
+            'level': 'INFO',          # captura 4xx/5xx server-side
+            'propagate': False,
+        },
+        'tickets': { # O seu aplicativo principal
+            'handlers': ['console', 'file'],
+            'level': 'INFO', # Grava as suas mensagens de Info e Error (ex: envios de e-mail)
+            'propagate': False,
+        },
+        'portal.http': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'portal.audit': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+USE_S3 = os.getenv('USE_S3', 'False') == 'True'
+
+if USE_S3:
+
+    os.environ['AWS_REQUEST_CHECKSUM_CALCULATION'] = 'when_required'
+    os.environ['AWS_RESPONSE_CHECKSUM_VALIDATION'] = 'when_required'
+    
+    AWS_S3_ENDPOINT_URL = os.getenv("OCI_ENDPOINT_URL")
+    AWS_ACCESS_KEY_ID = os.getenv("OCI_ACCESS_KEY")
+    AWS_SECRET_ACCESS_KEY = os.getenv("OCI_SECRET_KEY")
+    AWS_STORAGE_BUCKET_NAME = os.getenv("OCI_BUCKET_NAME")
+    AWS_S3_REGION_NAME = os.getenv("OCI_REGION_NAME", "sa-saopaulo-1")
+    
+    AWS_DEFAULT_ACL = 'private'
+    AWS_S3_FILE_OVERWRITE = False
+    
+    # Gera URLs temporárias (Pre-signed URLs)
+    AWS_QUERYSTRING_AUTH = True
+    AWS_QUERYSTRING_EXPIRE = 3600  # Link expira em 1 hora
+
+    AWS_S3_ADDRESSING_STYLE = "path"
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+    AWS_LOCATION = 'media'
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "tickets.storage.ToleranteS3Storage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+else:
+    # Desenvolvimento estritamente offline (sem S3 e sem classe customizada)
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
