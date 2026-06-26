@@ -241,7 +241,7 @@ _CSP_POLICY = {
             "https://cdnjs.cloudflare.com",
             "https://fonts.gstatic.com",
         ],
-        "img-src": [SELF, "data:"],
+        "img-src": [SELF, "data:", "blob:"],
         "connect-src": [SELF, "https://cdn.jsdelivr.net"],
         "frame-ancestors": [NONE],
         "base-uri": [SELF],
@@ -249,6 +249,18 @@ _CSP_POLICY = {
         "object-src": [NONE],
     }
 }
+
+# Object Storage (Oracle): as imagens do chat são servidas via redirect para
+# URL assinada no endpoint do bucket. Sem isso no img-src, a CSP bloqueia o
+# carregamento das <img> (thumbnail e lightbox) com origem nesse domínio.
+_oci_endpoint = os.getenv("OCI_ENDPOINT_URL")
+if _oci_endpoint:
+    from urllib.parse import urlsplit
+    _oci_parts = urlsplit(_oci_endpoint)
+    if _oci_parts.scheme and _oci_parts.netloc:
+        _oci_origin = f"{_oci_parts.scheme}://{_oci_parts.netloc}"
+        if _oci_origin not in _CSP_POLICY["DIRECTIVES"]["img-src"]:
+            _CSP_POLICY["DIRECTIVES"]["img-src"].append(_oci_origin)
 
 # Rollout: começa em Report-Only (não quebra nada, só reporta no console do
 # browser). Depois de validar zero violações, suba CSP_ENFORCE=True no .env.
