@@ -151,6 +151,12 @@ def meus_tickets(request: HttpRequest) -> HttpResponse:
             | Q(descricao__icontains=search_query)
         )
 
+    # Por padrão, oculta tickets encerrados das listas. Continuam pesquisáveis:
+    # qualquer busca textual ou filtro explícito de status os revela.
+    status_encerrados = ['RESOLVED', 'CLOSED', 'CANCELLED']
+    if not status_filters and not search_query:
+        tickets = tickets.exclude(status_maximo__in=status_encerrados)
+
     # Contadores por escopo (sobre o queryset já filtrado por status/busca)
     count_todos = tickets.count()
     count_meus = tickets.filter(cliente=request.user).count()
@@ -518,6 +524,11 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
             | Q(cliente__location__icontains=search_query)
             | Q(owner__icontains=search_query)
         )
+
+    # Por padrão, oculta tickets encerrados da lista. Continuam pesquisáveis:
+    # busca textual ou filtro explícito de status os revela.
+    if not status_filters and not search_query:
+        tickets = tickets.exclude(status_maximo__in=['RESOLVED', 'CLOSED', 'CANCELLED'])
 
     # 6. Dados para Dropdowns
     lista_locations = (
