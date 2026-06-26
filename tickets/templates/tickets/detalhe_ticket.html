@@ -222,6 +222,25 @@
     </div>
 </div>
 
+{# Modal/lightbox para visualizar imagens do chat sem sair da página #}
+<div class="modal fade" id="imgLightbox" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content bg-transparent border-0 shadow-none">
+            <div class="modal-header border-0 pb-1">
+                <span id="imgLightboxNome" class="text-white text-truncate me-auto" style="max-width: 80%;"></span>
+                <a id="imgLightboxDownload" href="#" class="btn btn-sm btn-light me-2" download title="Baixar">
+                    <i class="bi bi-download"></i>
+                </a>
+                <button type="button" class="btn-close btn-close-white ms-0" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body text-center p-0" style="max-height: 85vh; overflow: hidden;">
+                <img id="imgLightboxImg" src="" alt="" class="img-fluid rounded"
+                     style="max-height: 80vh; cursor: zoom-in; transition: transform 0.08s ease-out;">
+            </div>
+        </div>
+    </div>
+</div>
+
 {% block scripts %}
 <script nonce="{{ request.csp_nonce }}">
     document.addEventListener("DOMContentLoaded", function() {
@@ -240,6 +259,99 @@
         // Rola para o final do chat
         if(chatContainer) {
             chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // LIGHTBOX DE IMAGENS DO CHAT
+        // Delegação de evento: cobre também mensagens inseridas via AJAX.
+        const lightboxEl = document.getElementById("imgLightbox");
+        if (lightboxEl) {
+            const lbModal = new bootstrap.Modal(lightboxEl);
+            const lbImg = document.getElementById("imgLightboxImg");
+            const lbNome = document.getElementById("imgLightboxNome");
+            const lbDownload = document.getElementById("imgLightboxDownload");
+
+            const ZOOM_MIN = 1, ZOOM_MAX = 4, ZOOM_PASSO = 0.25;
+            let escala = 1, tx = 0, ty = 0;          // escala + deslocamento (pan)
+            let arrastando = false, startX = 0, startY = 0, startTx = 0, startTy = 0;
+
+            function aplicar() {
+                lbImg.style.transform = "translate(" + tx + "px, " + ty + "px) scale(" + escala + ")";
+            }
+
+            function cursorImg() {
+                lbImg.style.cursor = escala > 1 ? "grab" : "zoom-in";
+            }
+
+            function resetZoom() {
+                escala = 1; tx = 0; ty = 0; arrastando = false;
+                lbImg.style.transformOrigin = "0 0";
+                aplicar();
+                cursorImg();
+            }
+
+            document.addEventListener("click", function(e) {
+                const link = e.target.closest(".js-chat-imagem");
+                if (!link) return;
+                e.preventDefault();
+                resetZoom();
+                lbImg.src = link.dataset.imgSrc;
+                lbNome.textContent = link.dataset.imgName || "";
+                lbImg.alt = link.dataset.imgName || "";
+                lbDownload.href = link.getAttribute("href");
+                lbModal.show();
+            });
+
+            // Scroll do mouse na imagem: zoom suave e incremental, centrado no cursor.
+            lbImg.addEventListener("wheel", function(e) {
+                e.preventDefault();
+                const rect = lbImg.getBoundingClientRect();
+                // Ponto da imagem (coords não-escaladas) sob o cursor
+                const ix = (e.clientX - rect.left) / escala;
+                const iy = (e.clientY - rect.top) / escala;
+
+                const passo = e.deltaY < 0 ? ZOOM_PASSO : -ZOOM_PASSO;
+                const novaEscala = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, escala + passo));
+                if (novaEscala === escala) return;
+
+                // Mantém o ponto sob o cursor fixo na tela
+                tx -= ix * (novaEscala - escala);
+                ty -= iy * (novaEscala - escala);
+                escala = novaEscala;
+                if (escala === 1) { tx = 0; ty = 0; }   // volta ao centro em 1x
+                aplicar();
+                cursorImg();
+            }, { passive: false });
+
+            // Arrastar para mover a imagem ampliada
+            lbImg.addEventListener("mousedown", function(e) {
+                if (escala <= 1) return;
+                e.preventDefault();
+                arrastando = true;
+                startX = e.clientX; startY = e.clientY;
+                startTx = tx; startTy = ty;
+                lbImg.style.cursor = "grabbing";
+                lbImg.style.transition = "none";       // sem lag durante o arraste
+            });
+
+            document.addEventListener("mousemove", function(e) {
+                if (!arrastando) return;
+                tx = startTx + (e.clientX - startX);
+                ty = startTy + (e.clientY - startY);
+                aplicar();
+            });
+
+            document.addEventListener("mouseup", function() {
+                if (!arrastando) return;
+                arrastando = false;
+                lbImg.style.transition = "transform 0.08s ease-out";
+                cursorImg();
+            });
+
+            // Libera memória e zera zoom ao fechar
+            lightboxEl.addEventListener("hidden.bs.modal", function() {
+                lbImg.src = "";
+                resetZoom();
+            });
         }
 
         // FUNÇÕES DE LIMPEZA DE ERRO

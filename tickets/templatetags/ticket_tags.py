@@ -14,3 +14,19 @@ def urlize_target_blank(value, autoescape=True):
     """
     urlized_text = django_urlize(value, autoescape=autoescape)
     return mark_safe(urlized_text.replace('<a ', '<a target="_blank" '))
+
+
+# Extensões tratadas como imagem no chat (abrem em modal/lightbox).
+_EXT_IMAGEM = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg')
+
+
+@register.filter
+@stringfilter
+def is_imagem(value):
+    """
+    Retorna True se o nome do arquivo aparenta ser uma imagem (por extensão).
+    Usado no chat para decidir entre abrir em lightbox ou baixar.
+    """
+    if not value:
+        return False
+    return value.lower().endswith(_EXT_IMAGEM)
