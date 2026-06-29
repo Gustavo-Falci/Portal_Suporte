@@ -1,11 +1,11 @@
 {% load ticket_tags %}
 <div class="chat-row {% if interacao.autor == request.user %}chat-me{% else %}chat-other{% endif %}">
     
-    <div class="chat-avatar shadow-sm 
+    <div class="chat-avatar shadow-sm
         {% if interacao.is_support %}avatar-support
-        {% elif interacao.autor.is_consultor %}avatar-consultor{% endif %}" 
+        {% elif interacao.autor.is_consultor %}avatar-consultor{% endif %}"
         title="{{ interacao.autor.get_full_name|default:interacao.autor.username }}">
-        
+
         {% if interacao.is_support %}
             <i class="bi bi-headset" style="font-size: 1.2rem;"></i>
         {% elif interacao.autor.is_consultor %}
@@ -20,8 +20,9 @@
             <small class="fw-bold text-uppercase d-flex align-items-center" style="font-size: 0.75rem;">
                 
                 {% if interacao.is_support %}
-                    <i class="fa-solid fa-wrench me-2 text-muted"></i> 
+                    <i class="fa-solid fa-wrench me-2 text-muted"></i>
                     {{ interacao.autor.get_full_name|default:interacao.autor.username }}
+                    <span class="badge bg-secondary ms-2 rounded-1 fw-normal" style="font-size: 0.6rem; letter-spacing: 0.5px;">SUPORTE</span>
                 {% elif interacao.autor.is_consultor %}
                     {{ interacao.autor.get_full_name|default:interacao.autor.username }}
                     <span class="badge bg-secondary ms-2 rounded-1 fw-normal" style="font-size: 0.6rem; letter-spacing: 0.5px;">CONSULTOR</span>
