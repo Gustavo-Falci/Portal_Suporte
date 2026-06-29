@@ -231,7 +231,7 @@
                     <form method="post" action="{% url 'tickets:gerenciar_seguidores' ticket.id %}"
                           id="form-seguidores">
                         {% csrf_token %}
-                        <div class="border rounded mb-2 p-2" style="max-height: 180px; overflow-y: auto;">
+                        <div class="border rounded mb-2 p-2" style="max-height: 360px; overflow-y: auto;">
                             {% for c in consultores_disponiveis %}
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="seguidores"
