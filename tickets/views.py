@@ -735,7 +735,13 @@ def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
     Restrito a suporte/liderança."""
     ticket = get_object_or_404(Ticket, pk=pk)
 
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+
     if not _pode_gerenciar_seguidores(request.user):
+        if is_ajax:
+            return JsonResponse(
+                {"status": "error", "message": "Sem permissão."}, status=403
+            )
         messages.error(request, "Você não tem permissão para gerenciar seguidores.")
         return redirect("tickets:detalhe_ticket", pk=pk)
 
@@ -744,10 +750,15 @@ def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
     consultores = Cliente.objects.filter(pk__in=ids, groups__name="Consultores")
     ticket.seguidores.set(consultores)
 
+    total = consultores.count()
     audit.registrar(
         request.user,
-        f"atualizou seguidores do Ticket #{ticket.id} (total: {consultores.count()})",
+        f"atualizou seguidores do Ticket #{ticket.id} (total: {total})",
     )
+
+    if is_ajax:
+        return JsonResponse({"status": "success", "total": total})
+
     messages.success(request, "Seguidores do ticket atualizados.")
     return redirect("tickets:detalhe_ticket", pk=pk)
 

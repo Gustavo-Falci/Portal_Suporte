@@ -1147,6 +1147,17 @@ class SeguidoresTests(TestCase):
         self.assertRedirects(resp, reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk}))
         self.assertIn(self.cons_seg, self.ticket.seguidores.all())
 
+    def test_lider_define_seguidores_ajax(self):
+        self.client.force_login(self.lider)
+        resp = self.client.post(
+            reverse("tickets:gerenciar_seguidores", kwargs={"pk": self.ticket.pk}),
+            {"seguidores": [self.cons_seg.id]},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "success")
+        self.assertIn(self.cons_seg, self.ticket.seguidores.all())
+
     def test_consultor_nao_pode_designar(self):
         self.client.force_login(self.cons_owner)
         self.client.post(

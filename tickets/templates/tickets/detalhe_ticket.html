@@ -228,7 +228,8 @@
                     <p class="text-muted mb-2" style="font-size: 0.8rem;">
                         Consultores designados recebem notificações e podem ver/interagir neste ticket.
                     </p>
-                    <form method="post" action="{% url 'tickets:gerenciar_seguidores' ticket.id %}">
+                    <form method="post" action="{% url 'tickets:gerenciar_seguidores' ticket.id %}"
+                          id="form-seguidores">
                         {% csrf_token %}
                         <div class="border rounded mb-2 p-2" style="max-height: 180px; overflow-y: auto;">
                             {% for c in consultores_disponiveis %}
@@ -244,9 +245,10 @@
                             <p class="text-muted mb-0" style="font-size: 0.85rem;">Nenhum consultor cadastrado.</p>
                             {% endfor %}
                         </div>
-                        <button type="submit" class="btn btn-sm btn-primary w-100">
+                        <button type="submit" class="btn btn-sm btn-primary w-100" id="btn-seguidores">
                             <i class="bi bi-check2 me-1"></i> Salvar seguidores
                         </button>
+                        <div id="feedback-seguidores" class="small text-success mt-2 text-center" style="display: none;"></div>
                     </form>
                 </div>
             </div>
@@ -292,6 +294,40 @@
         // Rola para o final do chat
         if(chatContainer) {
             chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // SEGUIDORES: salva via AJAX (sem reload / sem voltar ao topo)
+        const formSeg = document.getElementById("form-seguidores");
+        if (formSeg) {
+            const btnSeg = document.getElementById("btn-seguidores");
+            const fbSeg = document.getElementById("feedback-seguidores");
+            formSeg.addEventListener("submit", function(e) {
+                e.preventDefault();
+                btnSeg.disabled = true;
+                fbSeg.style.display = "none";
+                fetch(formSeg.action, {
+                    method: "POST",
+                    headers: { "X-Requested-With": "XMLHttpRequest" },
+                    body: new FormData(formSeg),
+                })
+                .then(function(r) { return r.json().then(function(d){ return {ok: r.ok, d: d}; }); })
+                .then(function(res) {
+                    if (res.ok && res.d.status === "success") {
+                        fbSeg.className = "small text-success mt-2 text-center";
+                        fbSeg.textContent = "Seguidores salvos (" + res.d.total + ").";
+                    } else {
+                        fbSeg.className = "small text-danger mt-2 text-center";
+                        fbSeg.textContent = res.d.message || "Erro ao salvar.";
+                    }
+                    fbSeg.style.display = "block";
+                })
+                .catch(function() {
+                    fbSeg.className = "small text-danger mt-2 text-center";
+                    fbSeg.textContent = "Falha de rede.";
+                    fbSeg.style.display = "block";
+                })
+                .finally(function() { btnSeg.disabled = false; });
+            });
         }
 
         // LIGHTBOX DE IMAGENS DO CHAT
