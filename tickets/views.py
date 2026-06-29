@@ -458,6 +458,11 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
             Cliente.objects.filter(groups__name="Consultores")
             .order_by("first_name", "username")
         )
+        # Proprietário do ticket já é dono; não pode ser designado consultor.
+        if ticket.owner:
+            consultores_disponiveis = consultores_disponiveis.exclude(
+                person_id__iexact=ticket.owner
+            )
         seguidores_ids = list(ticket.seguidores.values_list("pk", flat=True))
 
     context = {
@@ -748,6 +753,9 @@ def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
     ids = request.POST.getlist("seguidores")
     # Apenas usuários do grupo Consultores podem ser seguidores.
     consultores = Cliente.objects.filter(pk__in=ids, groups__name="Consultores")
+    # Proprietário do ticket já é dono; não pode ser designado consultor.
+    if ticket.owner:
+        consultores = consultores.exclude(person_id__iexact=ticket.owner)
     ticket.seguidores.set(consultores)
 
     total = consultores.count()
