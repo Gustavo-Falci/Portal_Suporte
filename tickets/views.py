@@ -453,6 +453,10 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
     pode_gerenciar_seguidores = _pode_gerenciar_seguidores(request.user)
     consultores_disponiveis = None
     seguidores_ids = []
+    proprietario = (
+        Cliente.objects.filter(person_id__iexact=ticket.owner).first()
+        if ticket.owner else None
+    )
     if pode_gerenciar_seguidores:
         consultores_disponiveis = (
             Cliente.objects.filter(groups__name="Consultores")
@@ -474,6 +478,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
         "pode_gerenciar_seguidores": pode_gerenciar_seguidores,
         "consultores_disponiveis": consultores_disponiveis,
         "seguidores_ids": seguidores_ids,
+        "proprietario": proprietario,
     }
     return render(request, "tickets/detalhe_ticket.html", context)
 
