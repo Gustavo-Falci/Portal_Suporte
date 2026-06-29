@@ -90,6 +90,7 @@ class TicketAdmin(admin.ModelAdmin):
 
     list_select_related = ("cliente", "area", "ambiente")
     autocomplete_fields = ["cliente"]
+    filter_horizontal = ("seguidores",)
     readonly_fields = ("data_criacao", "data_atualizacao", "maximo_id")
     ordering = ("-data_criacao",)
 

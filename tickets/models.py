@@ -190,10 +190,20 @@ class Ticket(models.Model):
     )
 
     owner = models.CharField(
-        max_length=50, 
-        blank=True, 
-        null=True, 
+        max_length=50,
+        blank=True,
+        null=True,
         verbose_name="Proprietário (Maximo ID)"
+    )
+
+    # Consultores extras que a liderança designa para acompanhar o ticket.
+    # Ganham acesso de leitura+interação (igual ao owner) e recebem as
+    # notificações de cada interação. Não altera o owner no Maximo.
+    seguidores = models.ManyToManyField(
+        Cliente,
+        related_name="tickets_seguindo",
+        blank=True,
+        verbose_name="Seguidores (acompanham o ticket)",
     )
 
     prioridade = models.CharField(

@@ -18,6 +18,11 @@ urlpatterns = [
     path("sucesso/", views.ticket_sucesso, name="ticket_sucesso"),
     path("meus-tickets/", views.meus_tickets, name="meus_tickets"),
     path("ticket/<int:pk>/", views.detalhe_ticket, name="detalhe_ticket"),
+    path(
+        "ticket/<int:pk>/seguidores/",
+        views.gerenciar_seguidores,
+        name="gerenciar_seguidores",
+    ),
 
     # Área de Suporte
     path("fila-atendimento/", views.fila_atendimento, name="fila_atendimento"),
@@ -42,6 +47,11 @@ urlpatterns = [
         "notificacao/ler-todas/",
         views.marcar_todas_notificacoes_lidas,
         name="marcar_todas_notificacoes_lidas",
+    ),
+    path(
+        "notificacoes/badge/",
+        views.notificacoes_badge,
+        name="notificacoes_badge",
     ),
 ]
 

@@ -1,12 +1,11 @@
 <a class="nav-link text-white position-relative" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
     <i class="fa-solid fa-bell fa-lg"></i>
 
-    {% if notificacoes_count > 0 %}
-    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-light" style="font-size: 0.6rem;">
-        {{ notificacoes_count }}
+    <span class="js-notif-count position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-light"
+          style="font-size: 0.6rem; {% if notificacoes_count == 0 %}display: none;{% endif %}">
+        <span class="js-notif-count-num">{{ notificacoes_count }}</span>
         <span class="visually-hidden">notificações não lidas</span>
     </span>
-    {% endif %}
 </a>
 
 <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-0 notif-dropdown">

@@ -1,12 +1,12 @@
 import logging
 from django.test import TestCase, Client, SimpleTestCase, RequestFactory
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import AnonymousUser, Group
 from django.urls import reverse
 from unittest.mock import patch
 from .models import Ticket, TicketInteracao, Ambiente, Notificacao, Area
 from .forms import TicketForm
-from .services import MaximoSenderService
+from .services import MaximoSenderService, NotificationService
 from tickets.views import _tickets_visiveis_cliente, _usuario_tem_acesso_ticket
 from tickets.middleware import RequestLogMiddleware
 from tickets import audit
@@ -1069,3 +1069,123 @@ class CriarTicketRobustezTests(TestCase):
         t = Ticket.objects.get(sumario="Erro no ERP")
         self.assertFalse(t.anexos_sincronizados)
         mock_anexos.assert_not_called()
+
+
+class SeguidoresTests(TestCase):
+    """Seguidores: consultores extras designados pela liderança ganham
+    acesso de leitura+interação e recebem notificações. Só suporte/líder
+    pode designá-los; só usuários do grupo Consultores podem ser seguidores."""
+
+    def setUp(self):
+        self.client = Client()
+        self.g_consultores = Group.objects.create(name="Consultores")
+        self.g_lider = Group.objects.create(name="lider_suporte")
+
+        # Dono corporativo do ticket (location distinta dos consultores).
+        self.dono = Cliente.objects.create_user(
+            email="dono@corp.com", username="dono", password="123", location="CORP"
+        )
+        # Líder de suporte (designa seguidores).
+        self.lider = Cliente.objects.create_user(
+            email="lider@itc.com", username="lider", password="123"
+        )
+        self.lider.groups.add(self.g_lider)
+
+        # Consultor owner do ticket.
+        self.cons_owner = Cliente.objects.create_user(
+            email="owner@cons.com", username="cowner", password="123", person_id="P_OWNER"
+        )
+        self.cons_owner.groups.add(self.g_consultores)
+
+        # Consultor que será seguidor (sem acesso natural ao ticket).
+        self.cons_seg = Cliente.objects.create_user(
+            email="seg@cons.com", username="cseg", password="123", person_id="P_SEG"
+        )
+        self.cons_seg.groups.add(self.g_consultores)
+
+        for u in (self.dono, self.lider, self.cons_owner, self.cons_seg):
+            u.precisa_trocar_senha = False
+            u.save()
+
+        self.ticket = Ticket.objects.create(
+            cliente=self.dono, sumario="Privado", descricao="x",
+            owner="P_OWNER", maximo_id="SR-1",
+        )
+
+    # ---------- Acesso ----------
+
+    def test_consultor_sem_vinculo_nao_acessa(self):
+        self.client.force_login(self.cons_seg)
+        resp = self.client.get(reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk}))
+        self.assertRedirects(resp, reverse("tickets:meus_tickets"))
+
+    def test_seguidor_ganha_acesso_ao_detalhe(self):
+        self.ticket.seguidores.add(self.cons_seg)
+        self.client.force_login(self.cons_seg)
+        resp = self.client.get(reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk}))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_helper_reconhece_seguidor(self):
+        self.assertFalse(_usuario_tem_acesso_ticket(self.cons_seg, self.ticket))
+        self.ticket.seguidores.add(self.cons_seg)
+        self.assertTrue(_usuario_tem_acesso_ticket(self.cons_seg, self.ticket))
+
+    def test_seguidor_ve_ticket_na_fila(self):
+        self.ticket.seguidores.add(self.cons_seg)
+        self.client.force_login(self.cons_seg)
+        resp = self.client.get(reverse("tickets:fila_atendimento"))
+        self.assertContains(resp, "SR-1")
+
+    # ---------- Gerência (quem pode designar) ----------
+
+    def test_lider_define_seguidores(self):
+        self.client.force_login(self.lider)
+        resp = self.client.post(
+            reverse("tickets:gerenciar_seguidores", kwargs={"pk": self.ticket.pk}),
+            {"seguidores": [self.cons_seg.id]},
+        )
+        self.assertRedirects(resp, reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk}))
+        self.assertIn(self.cons_seg, self.ticket.seguidores.all())
+
+    def test_consultor_nao_pode_designar(self):
+        self.client.force_login(self.cons_owner)
+        self.client.post(
+            reverse("tickets:gerenciar_seguidores", kwargs={"pk": self.ticket.pk}),
+            {"seguidores": [self.cons_seg.id]},
+        )
+        self.assertNotIn(self.cons_seg, self.ticket.seguidores.all())
+
+    def test_apenas_consultores_viram_seguidores(self):
+        # dono não é do grupo Consultores -> deve ser ignorado.
+        self.client.force_login(self.lider)
+        self.client.post(
+            reverse("tickets:gerenciar_seguidores", kwargs={"pk": self.ticket.pk}),
+            {"seguidores": [self.dono.id, self.cons_seg.id]},
+        )
+        segs = set(self.ticket.seguidores.all())
+        self.assertIn(self.cons_seg, segs)
+        self.assertNotIn(self.dono, segs)
+
+    # ---------- Notificação ----------
+
+    @patch.object(NotificationService, "_enviar_email_generico")
+    def test_seguidor_recebe_notificacao(self, mock_mail):
+        self.ticket.seguidores.add(self.cons_seg)
+        interacao = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.cons_owner, mensagem="atualização"
+        )
+        NotificationService.notificar_nova_interacao(self.ticket, interacao)
+        self.assertTrue(
+            Notificacao.objects.filter(destinatario=self.cons_seg, ticket=self.ticket).exists()
+        )
+
+    @patch.object(NotificationService, "_enviar_email_generico")
+    def test_autor_nao_recebe_notificacao(self, mock_mail):
+        self.ticket.seguidores.add(self.cons_seg)
+        interacao = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.cons_seg, mensagem="eu mesmo"
+        )
+        NotificationService.notificar_nova_interacao(self.ticket, interacao)
+        self.assertFalse(
+            Notificacao.objects.filter(destinatario=self.cons_seg, ticket=self.ticket).exists()
+        )

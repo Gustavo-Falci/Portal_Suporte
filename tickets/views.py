@@ -46,6 +46,9 @@ def _usuario_tem_acesso_ticket(user: Cliente, ticket: Ticket) -> bool:
     if user.person_id and ticket.owner:
         is_owner_assigned = (ticket.owner.lower() == user.person_id.lower())
 
+    # Seguidor designado pela liderança: acesso de leitura+interação.
+    is_seguidor = ticket.seguidores.filter(pk=user.pk).exists()
+
     loc_user = (user.location or "").strip()
     loc_ticket = (ticket.cliente.location or "").strip()
     # Mesma empresa = mesma location E mesmo "mundo" de email (gmail só com gmail).
@@ -55,7 +58,7 @@ def _usuario_tem_acesso_ticket(user: Cliente, ticket: Ticket) -> bool:
         and _email_eh_gmail(user) == _email_eh_gmail(ticket.cliente)
     )
 
-    return is_dono or is_staff or is_lider or is_owner_assigned or is_mesma_empresa
+    return is_dono or is_staff or is_lider or is_owner_assigned or is_mesma_empresa or is_seguidor
 
 
 def _tickets_visiveis_cliente(user: Cliente) -> QuerySet:
@@ -88,10 +91,14 @@ def pagina_inicial(request: HttpRequest) -> HttpResponse:
     if user.is_support_team or user.is_lider_suporte:
         qs_tickets = Ticket.objects.exclude(maximo_id__isnull=True)
     elif user.is_consultor:
+        # Próprios (owner == person_id) + tickets que segue (designado pela liderança).
+        qs_tickets = Ticket.objects.exclude(maximo_id__isnull=True)
         if user.person_id:
-            qs_tickets = Ticket.objects.exclude(maximo_id__isnull=True).filter(owner__iexact=user.person_id)
+            qs_tickets = qs_tickets.filter(
+                Q(owner__iexact=user.person_id) | Q(seguidores=user)
+            ).distinct()
         else:
-            qs_tickets = Ticket.objects.none()
+            qs_tickets = qs_tickets.filter(seguidores=user).distinct()
     else:
         qs_tickets = _tickets_visiveis_cliente(user)
 
@@ -442,12 +449,26 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
 
     interacoes = ticket.interacoes.select_related("autor").all()
 
+    # --- Seguidores (consultores extras designados pela liderança) ---
+    pode_gerenciar_seguidores = _pode_gerenciar_seguidores(request.user)
+    consultores_disponiveis = None
+    seguidores_ids = []
+    if pode_gerenciar_seguidores:
+        consultores_disponiveis = (
+            Cliente.objects.filter(groups__name="Consultores")
+            .order_by("first_name", "username")
+        )
+        seguidores_ids = list(ticket.seguidores.values_list("pk", flat=True))
+
     context = {
         "ticket": ticket,
         "interacoes": interacoes,
         "form": form,
         "origem": origem,
         "voltar_url": voltar_url,
+        "pode_gerenciar_seguidores": pode_gerenciar_seguidores,
+        "consultores_disponiveis": consultores_disponiveis,
+        "seguidores_ids": seguidores_ids,
     }
     return render(request, "tickets/detalhe_ticket.html", context)
 
@@ -486,11 +507,16 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     if is_consultor and not is_support and not is_lider:
 
         if request.user.person_id:
-            tickets = tickets.filter(owner__iexact=request.user.person_id)
+            # Próprios (owner) + tickets que segue (designado pela liderança).
+            tickets = tickets.filter(
+                Q(owner__iexact=request.user.person_id) | Q(seguidores=request.user)
+            ).distinct()
 
         else:
-            tickets = Ticket.objects.none()
-            messages.warning(request, "Seu usuário não possui um ID Maximo configurado.")
+            # Sem ID Maximo ainda pode ver tickets em que foi colocado como seguidor.
+            tickets = tickets.filter(seguidores=request.user).distinct()
+            if not tickets.exists():
+                messages.warning(request, "Seu usuário não possui um ID Maximo configurado.")
 
     # 4. Captura dos Filtros via GET
     status_filters = request.GET.getlist("status")
@@ -689,6 +715,49 @@ def marcar_todas_notificacoes_lidas(request: HttpRequest) -> HttpResponse:
     """Marca todas as notificações não-lidas do usuário como lidas (bulk)."""
     Notificacao.objects.filter(destinatario=request.user, lida=False).update(lida=True)
     audit.registrar(request.user, "marcou todas notificações como lidas")
+    return redirect(request.META.get("HTTP_REFERER", reverse("tickets:pagina_inicial")))
+
+
+def _pode_gerenciar_seguidores(user: Cliente) -> bool:
+    """Só equipe de suporte (staff) e liderança designam seguidores."""
+    return bool(
+        getattr(user, "is_support_team", False)
+        or user.is_superuser
+        or user.groups.filter(name="lider_suporte").exists()
+    )
+
+
+@login_required(login_url="/login/")
+@require_http_methods(["POST"])
+def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
+    """Define os seguidores de um ticket (consultores extras que ganham
+    acesso de leitura+interação e passam a receber notificações).
+    Restrito a suporte/liderança."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+
+    if not _pode_gerenciar_seguidores(request.user):
+        messages.error(request, "Você não tem permissão para gerenciar seguidores.")
+        return redirect("tickets:detalhe_ticket", pk=pk)
+
+    ids = request.POST.getlist("seguidores")
+    # Apenas usuários do grupo Consultores podem ser seguidores.
+    consultores = Cliente.objects.filter(pk__in=ids, groups__name="Consultores")
+    ticket.seguidores.set(consultores)
+
+    audit.registrar(
+        request.user,
+        f"atualizou seguidores do Ticket #{ticket.id} (total: {consultores.count()})",
+    )
+    messages.success(request, "Seguidores do ticket atualizados.")
+    return redirect("tickets:detalhe_ticket", pk=pk)
+
+
+@login_required(login_url="/login/")
+def notificacoes_badge(request: HttpRequest) -> JsonResponse:
+    """Endpoint leve p/ polling AJAX do sino: retorna a contagem de
+    notificações não-lidas do usuário."""
+    count = Notificacao.objects.filter(destinatario=request.user, lida=False).count()
+    return JsonResponse({"count": count})
 
     referer = request.META.get("HTTP_REFERER")
     if referer and url_has_allowed_host_and_scheme(

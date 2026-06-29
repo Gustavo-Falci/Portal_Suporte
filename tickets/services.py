@@ -230,6 +230,10 @@ class NotificationService:
                 if lider.email:
                     destinatarios.add(lider)
 
+            # C2. Adiciona os Seguidores designados (consultores extras no ticket)
+            for seguidor in ticket.seguidores.all():
+                destinatarios.add(seguidor)
+
             # D. Remove o Autor da Mensagem (quem mandou não deve receber notificação)
             if interacao.autor in destinatarios:
                 destinatarios.remove(interacao.autor)
@@ -283,8 +287,9 @@ class NotificationService:
                 <a href="{full_link}">Clique aqui para responder no portal</a>
                 """
                 
-                # Envia individualmente para cada destinatário
-                cls._enviar_email_generico([usuario.email], assunto, corpo_email)
+                # Envia individualmente para cada destinatário (se tiver e-mail)
+                if usuario.email:
+                    cls._enviar_email_generico([usuario.email], assunto, corpo_email)
 
             # 4. Grava notificações no banco em lote
             if notificacoes_db:
