@@ -329,7 +329,7 @@ class TicketInteracao(models.Model):
 
     @property
     def is_support(self):
-        return self.autor.is_support_team
+        return self.autor.is_support_team or self.autor.is_lider_suporte
 
     @property
     def filename(self):
