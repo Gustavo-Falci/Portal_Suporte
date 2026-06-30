@@ -10,3 +10,4 @@ media/
 portal_suporte/settings.py
 .claude/
 docs/
+.superpowers/

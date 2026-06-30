@@ -125,8 +125,21 @@ def pagina_inicial(request: HttpRequest) -> HttpResponse:
 # SUCESSO
 @login_required(login_url="/login/")
 def ticket_sucesso(request: HttpRequest) -> HttpResponse:
+    # Recupera o ticket recém-criado (id deixado na sessão por criar_ticket),
+    # consumindo a chave para que refresh/acesso direto caia na versão genérica.
+    ticket = None
+    tid = request.session.pop("ticket_sucesso_id", None)
+    if tid:
+        candidato = (
+            Ticket.objects.filter(pk=tid)
+            .select_related("ambiente")
+            .first()
+        )
+        # ACL: só o dono (ou quem tem acesso) vê o resumo do chamado.
+        if candidato and _usuario_tem_acesso_ticket(request.user, candidato):
+            ticket = candidato
 
-    return render(request, "tickets/sucesso.html")
+    return render(request, "tickets/sucesso.html", {"ticket": ticket})
 
 
 # LISTAGEM DE TICKETS
@@ -246,7 +259,9 @@ def _integrar_maximo_criacao(request: HttpRequest, ticket: Ticket, todos_anexos:
                 f"{len(todos_anexos)} anexo(s) NAO enviado(s) ao Maximo."
             )
 
-        messages.success(request, f"Ticket #{ticket.id} aberto com sucesso!")
+        # Sucesso não precisa de flash: a tela de sucesso (sucesso.html) já
+        # confirma a criação com nº da SR e resumo. Avisos/erros seguem via
+        # messages (renderizados pelo bloco messages do base, agora restaurado).
 
     else:
         # Maximo REST indisponível -> fallback no e-mail pro Listener.
@@ -260,7 +275,6 @@ def _integrar_maximo_criacao(request: HttpRequest, ticket: Ticket, todos_anexos:
                 f"Ticket #{ticket.id} criado: enviado ao Maximo via e-mail fallback "
                 f"(Listener) com sucesso (user={request.user.username})."
             )
-            messages.success(request, f"Ticket #{ticket.id} aberto com sucesso!")
 
         except Exception as e:
             logger.error(f"Erro no envio de e-mail fallback (Ticket {ticket.id}): {e}")
@@ -324,6 +338,7 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                     "Nossa equipe foi avisada e fará o acompanhamento."
                 )
 
+            request.session["ticket_sucesso_id"] = ticket.id
             return redirect("tickets:ticket_sucesso")
 
         else:

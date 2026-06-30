@@ -1,29 +1,88 @@
 {% extends "tickets/base.html" %}
 
-{% block messages %}
-    {% endblock %}
-
 {% block content %}
 <div class="d-flex justify-content-center align-items-center" style="min-height: 60vh;">
     <div class="card shadow-sm text-center p-4 p-md-5" style="max-width: 630px; width: 100%;">
-        <div class="mb-4">
+        <div class="mb-3">
             <i class="fa-solid fa-circle-check text-success fa-5x fa-beat-fade" style="--fa-beat-fade-opacity: 0.6; --fa-beat-fade-scale: 1.05; --fa-animation-duration: 2s;"></i>
         </div>
-        
-        <h2 class="h3 fw-bold mb-3">Ticket Enviado com Sucesso!</h2>
-        
-        <p class="text-muted mb-4">
-            O ticket foi criado e enviado para o suporte IT Consol.<br>
-        </p>
 
-        <div class="d-grid gap-2 col-10 mx-auto">
-            <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-primary">
-                <i class="fa-solid fa-plus me-2"></i>Abrir Outro Ticket
-            </a>
-            <a href="{% url 'tickets:pagina_inicial' %}" class="btn btn-outline-secondary">
-                <i class="fa-solid fa-house me-2"></i>Voltar ao Início
-            </a>
-        </div>
+        <h2 class="h3 fw-bold mb-2">Ticket criado com sucesso!</h2>
+
+        {% if ticket %}
+            {% if ticket.maximo_id %}
+                <p class="text-muted mb-3">Seu chamado foi aberto no suporte IT Consol.</p>
+                <div class="mb-4">
+                    <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-3 py-2 fs-5">
+                        <i class="fa-solid fa-hashtag me-1"></i>Chamado <strong>{{ ticket.maximo_id }}</strong>
+                    </span>
+                </div>
+            {% else %}
+                <p class="text-muted mb-3">
+                    Seu chamado foi registrado. O número está em
+                    <strong>processamento</strong> e ficará disponível em instantes.
+                </p>
+            {% endif %}
+
+            <ul class="list-group list-group-flush text-start mb-4">
+                <li class="list-group-item d-flex justify-content-between align-items-start">
+                    <span class="text-muted"><i class="fa-solid fa-pen-to-square me-2"></i>Resumo</span>
+                    <span class="fw-medium text-end">{{ ticket.sumario }}</span>
+                </li>
+                {% if ticket.ambiente %}
+                <li class="list-group-item d-flex justify-content-between align-items-start">
+                    <span class="text-muted"><i class="fa-solid fa-server me-2"></i>Ambiente</span>
+                    <span class="fw-medium text-end">{{ ticket.ambiente.nome_ambiente }} — {{ ticket.ambiente.numero_ativo }}</span>
+                </li>
+                {% endif %}
+                {% if ticket.prioridade %}
+                <li class="list-group-item d-flex justify-content-between align-items-start">
+                    <span class="text-muted"><i class="fa-solid fa-flag me-2"></i>Prioridade</span>
+                    <span class="fw-medium text-end">{{ ticket.get_prioridade_display }}</span>
+                </li>
+                {% endif %}
+                <li class="list-group-item d-flex justify-content-between align-items-start">
+                    <span class="text-muted"><i class="fa-solid fa-clock me-2"></i>Aberto em</span>
+                    <span class="fw-medium text-end">{{ ticket.data_criacao|date:"d/m/Y H:i" }}</span>
+                </li>
+                {% with n_anexos=ticket.anexos.count %}
+                {% if n_anexos or ticket.documento_requisicao %}
+                <li class="list-group-item d-flex justify-content-between align-items-start">
+                    <span class="text-muted"><i class="fa-solid fa-paperclip me-2"></i>Anexos</span>
+                    <span class="fw-medium text-end">
+                        {% if ticket.documento_requisicao %}{{ n_anexos|add:1 }}{% else %}{{ n_anexos }}{% endif %}
+                    </span>
+                </li>
+                {% endif %}
+                {% endwith %}
+            </ul>
+
+            <div class="d-grid gap-2 col-10 mx-auto">
+                <a href="{% url 'tickets:detalhe_ticket' pk=ticket.pk %}" class="btn btn-primary">
+                    <i class="fa-solid fa-eye me-2"></i>Acompanhar Ticket
+                </a>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-outline-secondary flex-fill">
+                        <i class="fa-solid fa-plus me-2"></i>Abrir Outro
+                    </a>
+                    <a href="{% url 'tickets:meus_tickets' %}" class="btn btn-outline-secondary flex-fill">
+                        <i class="fa-solid fa-list me-2"></i>Meus Tickets
+                    </a>
+                </div>
+            </div>
+        {% else %}
+            <p class="text-muted mb-4">
+                O ticket foi criado e enviado para o suporte IT Consol.
+            </p>
+            <div class="d-grid gap-2 col-10 mx-auto">
+                <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-primary">
+                    <i class="fa-solid fa-plus me-2"></i>Abrir Outro Ticket
+                </a>
+                <a href="{% url 'tickets:meus_tickets' %}" class="btn btn-outline-secondary">
+                    <i class="fa-solid fa-list me-2"></i>Meus Tickets
+                </a>
+            </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

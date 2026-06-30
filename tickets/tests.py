@@ -1200,3 +1200,99 @@ class SeguidoresTests(TestCase):
         self.assertFalse(
             Notificacao.objects.filter(destinatario=self.cons_seg, ticket=self.ticket).exists()
         )
+
+
+class TelaSucessoTests(TestCase):
+    """Tela de sucesso rica: mostra nº SR, resumo e CTA de acompanhamento,
+    com validação de acesso e fallback gracioso sem contexto."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="suc@acme.com", username="suc", password="123",
+            location="ACME", person_id="P01",
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.outro = Cliente.objects.create_user(
+            email="intruso@acme.com", username="intruso", password="123",
+        )
+        self.outro.precisa_trocar_senha = False
+        self.outro.save()
+        self.ambiente = Ambiente.objects.create(nome_ambiente="ERP", numero_ativo="008")
+        self.ambiente.clientes.add(self.user)
+        self.ticket = Ticket.objects.create(
+            cliente=self.user, sumario="Erro no ERP", descricao="Trava ao salvar",
+            prioridade="2", ambiente=self.ambiente, maximo_id="2277",
+        )
+
+    def _set_session_ticket(self, ticket_id):
+        session = self.client.session
+        session["ticket_sucesso_id"] = ticket_id
+        session.save()
+
+    def test_mostra_numero_sr_e_resumo(self):
+        self.client.force_login(self.user)
+        self._set_session_ticket(self.ticket.id)
+        resp = self.client.get(reverse("tickets:ticket_sucesso"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["ticket"], self.ticket)
+        self.assertContains(resp, "2277")          # nº SR
+        self.assertContains(resp, "Erro no ERP")   # sumário
+
+    def test_cta_acompanhar_aponta_para_detalhe(self):
+        self.client.force_login(self.user)
+        self._set_session_ticket(self.ticket.id)
+        resp = self.client.get(reverse("tickets:ticket_sucesso"))
+        url_detalhe = reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk})
+        self.assertContains(resp, url_detalhe)
+
+    def test_consome_session_uma_vez(self):
+        # Após exibir, a chave é removida -> refresh não remostra o ticket.
+        self.client.force_login(self.user)
+        self._set_session_ticket(self.ticket.id)
+        self.client.get(reverse("tickets:ticket_sucesso"))
+        resp2 = self.client.get(reverse("tickets:ticket_sucesso"))
+        self.assertIsNone(resp2.context["ticket"])
+
+    def test_acesso_direto_sem_session_versao_generica(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("tickets:ticket_sucesso"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.context["ticket"])
+
+    def test_acl_nega_ticket_de_terceiro(self):
+        # intruso (sem location/vínculo) não pode ver resumo do ticket alheio,
+        # mesmo que o id esteja na sessão dele.
+        self.client.force_login(self.outro)
+        self._set_session_ticket(self.ticket.id)
+        resp = self.client.get(reverse("tickets:ticket_sucesso"))
+        self.assertIsNone(resp.context["ticket"])
+
+    def test_fallback_sem_maximo_id_mostra_em_processamento(self):
+        self.ticket.maximo_id = None
+        self.ticket.save()
+        self.client.force_login(self.user)
+        self._set_session_ticket(self.ticket.id)
+        resp = self.client.get(reverse("tickets:ticket_sucesso"))
+        self.assertEqual(resp.context["ticket"], self.ticket)
+        self.assertContains(resp, "processamento")
+        # CTA acompanhar ainda presente (usa PK local)
+        url_detalhe = reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk})
+        self.assertContains(resp, url_detalhe)
+
+    def test_criar_ticket_grava_id_na_session(self):
+        self.client.force_login(self.user)
+        with patch("tickets.views.MaximoSenderService.criar_sr", return_value=None), \
+             patch("tickets.views.MaximoEmailService.enviar_ticket_maximo"):
+            data = {
+                "sumario": "Novo problema", "descricao": "detalhe",
+                "prioridade": "3", "ambiente": self.ambiente.id,
+                "documento_requisicao": SimpleUploadedFile(
+                    "req.docx", b"PK\x03\x04docxbytes",
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
+            }
+            self.client.post(reverse("tickets:criar_ticket"), data)
+        novo = Ticket.objects.get(sumario="Novo problema")
+        self.assertEqual(self.client.session.get("ticket_sucesso_id"), novo.id)
