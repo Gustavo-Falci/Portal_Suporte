@@ -1299,8 +1299,8 @@ class TelaSucessoTests(TestCase):
 
 
 class ErrosCriacaoTicketTests(TestCase):
-    """Feedback de erro no fluxo de criação: erro de banco visível,
-    form inválido com alerta + banner de reanexo, GET sem banner."""
+    """Feedback de erro no fluxo de criação: erro de banco visível inline,
+    form inválido com alerta estático, GET sem erros."""
 
     def setUp(self):
         self.client = Client()
@@ -1337,7 +1337,7 @@ class ErrosCriacaoTicketTests(TestCase):
     @patch("tickets.views.TicketAnexo.objects.create", side_effect=Exception("db down"))
     def test_erro_persistencia_mostra_mensagem(self, mock_create):
         # POST válido com evidência -> create() lança -> rollback, re-render 200
-        # com a mensagem de erro (hoje engolida) e o banner de reanexo visíveis.
+        # com a mensagem de erro (antes engolida) visível INLINE no card.
         resp = self.client.post(
             reverse("tickets:criar_ticket"), self._data_valida(arquivo=self._png())
         )
@@ -1345,9 +1345,8 @@ class ErrosCriacaoTicketTests(TestCase):
         self.assertFalse(Ticket.objects.filter(sumario="Erro no ERP").exists())
         self.assertContains(resp, "Ocorreu um erro ao guardar")
         self.assertContains(resp, "telefone ou chat")
-        self.assertContains(resp, "Reanexe")
 
-    def test_form_invalido_mostra_alerta_e_banner(self):
+    def test_form_invalido_mostra_alerta(self):
         # POST sem documento_requisicao (obrigatório) -> form inválido.
         data = {
             "sumario": "x", "descricao": "y",
@@ -1356,9 +1355,10 @@ class ErrosCriacaoTicketTests(TestCase):
         resp = self.client.post(reverse("tickets:criar_ticket"), data)
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "generalErrorAlert")
-        self.assertContains(resp, "Reanexe")
+        self.assertContains(resp, "corrija os campos destacados")
 
-    def test_get_inicial_sem_banner(self):
+    def test_get_inicial_sem_erros(self):
         resp = self.client.get(reverse("tickets:criar_ticket"))
         self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, "Reanexe")
+        self.assertNotContains(resp, "corrija os campos destacados")
+        self.assertNotContains(resp, "Ocorreu um erro ao guardar")

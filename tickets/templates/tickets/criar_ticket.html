@@ -19,13 +19,6 @@
             </div>
             {% endif %}
 
-            {% if retry_com_erro %}
-            <div class="alert alert-warning d-flex align-items-center small mb-3" role="alert">
-                <i class="fa-solid fa-paperclip me-2"></i>
-                <span>Por segurança, o navegador limpou os arquivos enviados. <strong>Reanexe</strong> o documento e as evidências antes de reenviar.</span>
-            </div>
-            {% endif %}
-
             {% if form.errors %}
                 <div id="generalErrorAlert" class="text-center mb-4 fade show" role="alert">
                     <div class="d-inline-flex align-items-center text-danger fw-bold small">

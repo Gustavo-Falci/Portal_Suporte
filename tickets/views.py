@@ -319,7 +319,6 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                     request, "tickets/criar_ticket.html",
                     {
                         "form": form,
-                        "retry_com_erro": True,
                         "erro_persistencia": (
                             "Ocorreu um erro ao guardar o ticket. Por segurança, "
                             "reanexe os arquivos e tente novamente. Se o erro "
@@ -360,18 +359,12 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                 f"Criação de ticket REJEITADA (form inválido) user={request.user.username}; "
                 f"campos com erro: {list(form.errors.keys())}"
             )
-            return render(
-                request, "tickets/criar_ticket.html",
-                {"form": form, "retry_com_erro": True},
-            )
+            return render(request, "tickets/criar_ticket.html", {"form": form})
 
     else:
         form = TicketForm(user=request.user)
 
-    return render(
-        request, "tickets/criar_ticket.html",
-        {"form": form, "retry_com_erro": False},
-    )
+    return render(request, "tickets/criar_ticket.html", {"form": form})
 
 
 # DETALHE DO TICKET
