@@ -114,11 +114,30 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     {% if user.is_authenticated %}
-    {# Polling do sino: atualiza a contagem de notificações sem recarregar a página #}
+    {# Polling do sino: atualiza contagem + lista de notificações sem recarregar a página #}
+    <style>
+        @keyframes notifShake {
+            0%, 100% { transform: rotate(0); }
+            20% { transform: rotate(15deg); }
+            40% { transform: rotate(-12deg); }
+            60% { transform: rotate(8deg); }
+            80% { transform: rotate(-5deg); }
+        }
+        .js-notif-bell.notif-shake { animation: notifShake 0.7s ease-in-out; transform-origin: top center; }
+    </style>
     <script nonce="{{ request.csp_nonce }}">
         (function () {
             const BADGE_URL = "{% url 'tickets:notificacoes_badge' %}";
-            const INTERVALO_MS = 30000;
+            const INTERVALO_MS = 5000;
+            let ultimoCount = null;
+
+            function animarSino() {
+                document.querySelectorAll(".js-notif-bell").forEach(function (bell) {
+                    bell.classList.remove("notif-shake");
+                    void bell.offsetWidth; // reinicia a animação
+                    bell.classList.add("notif-shake");
+                });
+            }
 
             function atualizarBadge(count) {
                 document.querySelectorAll(".js-notif-count").forEach(function (wrap) {
@@ -128,10 +147,26 @@
                 });
             }
 
+            function atualizarLista(html) {
+                if (html == null) return;
+                document.querySelectorAll(".js-notif-menu").forEach(function (menu) {
+                    // Não mexe num dropdown aberto: evita flicker e não fecha o menu do usuário.
+                    if (menu.classList.contains("show")) return;
+                    menu.innerHTML = html;
+                });
+            }
+
             function buscar() {
                 fetch(BADGE_URL, { headers: { "X-Requested-With": "XMLHttpRequest" } })
                     .then(function (r) { return r.ok ? r.json() : null; })
-                    .then(function (data) { if (data) atualizarBadge(data.count); })
+                    .then(function (data) {
+                        if (!data) return;
+                        atualizarBadge(data.count);
+                        atualizarLista(data.html);
+                        // Anima o sino só quando chega notificação nova (count subiu).
+                        if (ultimoCount !== null && data.count > ultimoCount) animarSino();
+                        ultimoCount = data.count;
+                    })
                     .catch(function () { /* silencioso: falha de rede não trava a UI */ });
             }
 

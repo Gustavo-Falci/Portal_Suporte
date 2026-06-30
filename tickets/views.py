@@ -779,16 +779,18 @@ def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
 @login_required(login_url="/login/")
 def notificacoes_badge(request: HttpRequest) -> JsonResponse:
     """Endpoint leve p/ polling AJAX do sino: retorna a contagem de
-    notificações não-lidas do usuário."""
-    count = Notificacao.objects.filter(destinatario=request.user, lida=False).count()
-    return JsonResponse({"count": count})
+    notificações não-lidas + o HTML da lista do dropdown, para o JS
+    atualizar número e conteúdo sem recarregar a página."""
+    qs_nao_lidas = Notificacao.objects.filter(destinatario=request.user, lida=False)
+    count = qs_nao_lidas.count()
+    ultimas = qs_nao_lidas.order_by("data_criacao")[:5]
 
-    referer = request.META.get("HTTP_REFERER")
-    if referer and url_has_allowed_host_and_scheme(
-        referer, allowed_hosts={request.get_host()}, require_https=request.is_secure()
-    ):
-        return redirect(referer)
-    return redirect("tickets:pagina_inicial")
+    html = render_to_string(
+        "tickets/partials/notificacoes_lista.html",
+        {"notificacoes_list": ultimas, "notificacoes_count": count},
+        request=request,
+    )
+    return JsonResponse({"count": count, "html": html})
 
 
 def _get_next_url(request: HttpRequest) -> str | None:
