@@ -107,9 +107,9 @@
                 <div class="form-floating mb-3">
                     <textarea class="form-control {% if form.descricao.errors %}is-invalid{% endif %}" 
                             placeholder="Descreva o problema aqui" 
-                            id="descricao" 
-                            name="descricao" 
-                            style="height: 150px"
+                            id="descricao"
+                            name="descricao"
+                            style="min-height: 150px; overflow-y: hidden;"
                             >{{ form.descricao.value|default:"" }}</textarea>
                     
                     <label for="descricao">Descrição Detalhada do Problema *</label>
@@ -190,7 +190,21 @@
 
 <script nonce="{{ request.csp_nonce }}">
     document.addEventListener('DOMContentLoaded', function() {
-        
+
+        // --- 0. AUTO-EXPANDIR DESCRIÇÃO ---
+        const descInput = document.getElementById('descricao');
+        function autoGrow(el) {
+            if (!el) return;
+            const max = window.innerHeight * 0.5;
+            el.style.height = "auto";
+            el.style.height = Math.min(el.scrollHeight, max) + "px";
+            el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+        }
+        if (descInput) {
+            autoGrow(descInput); // ajusta na carga (ex: erro de validação repreenche)
+            descInput.addEventListener('input', function() { autoGrow(descInput); });
+        }
+
         // --- 1. CONFIGURAÇÕES ---
         const MAX_SIZE_MB = 150;
         const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;

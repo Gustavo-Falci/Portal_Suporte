@@ -441,12 +441,24 @@
             });
         }
 
-        // Limpa erro da Mensagem ao digitar
+        // Auto-expandir a textarea conforme o texto cresce
+        function autoGrow(el) {
+            if (!el) return;
+            const max = window.innerHeight * 0.5;
+            el.style.height = "auto";
+            el.style.height = Math.min(el.scrollHeight, max) + "px";
+            el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+        }
+
+        // Limpa erro da Mensagem ao digitar + auto-expande
         if(msgInput) {
+            msgInput.style.overflowY = "hidden";
+            autoGrow(msgInput);
             msgInput.addEventListener('input', function() {
                 msgError.style.display = 'none';
                 msgError.textContent = "";
                 msgInput.classList.remove('is-invalid');
+                autoGrow(msgInput);
             });
         }
 
@@ -487,6 +499,7 @@
                         chatContainer.insertAdjacentHTML('beforeend', result.body.html);
                         chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
                         chatForm.reset();
+                        autoGrow(msgInput); // reseta a altura após limpar
                     } else {
                         // ERRO DETECTADO (Backend retornou erro)
                         
