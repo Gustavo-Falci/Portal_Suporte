@@ -15,9 +15,9 @@ def notificacoes_usuario(request: HttpRequest) -> dict:
         # 2. Contagem Real: Conta no banco o total (Ex: 15), antes de cortar
         qtd_total = qs_nao_lidas.count()
 
-        # 3. Lista para o Dropdown: Pega apenas as 5 mais antigos
+        # 3. Lista para o Dropdown: Pega apenas as 5 mais recentes
         # O slice [:5] deve ser feito APÓS a contagem total
-        ultimas_notificacoes = qs_nao_lidas.order_by("data_criacao")[:5]
+        ultimas_notificacoes = qs_nao_lidas.order_by("-data_criacao")[:5]
 
         return {
             "notificacoes_list": ultimas_notificacoes,

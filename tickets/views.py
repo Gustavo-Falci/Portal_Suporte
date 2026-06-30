@@ -783,7 +783,7 @@ def notificacoes_badge(request: HttpRequest) -> JsonResponse:
     atualizar número e conteúdo sem recarregar a página."""
     qs_nao_lidas = Notificacao.objects.filter(destinatario=request.user, lida=False)
     count = qs_nao_lidas.count()
-    ultimas = qs_nao_lidas.order_by("data_criacao")[:5]
+    ultimas = qs_nao_lidas.order_by("-data_criacao")[:5]
 
     html = render_to_string(
         "tickets/partials/notificacoes_lista.html",
