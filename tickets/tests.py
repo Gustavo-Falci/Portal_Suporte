@@ -1296,3 +1296,69 @@ class TelaSucessoTests(TestCase):
             self.client.post(reverse("tickets:criar_ticket"), data)
         novo = Ticket.objects.get(sumario="Novo problema")
         self.assertEqual(self.client.session.get("ticket_sucesso_id"), novo.id)
+
+
+class ErrosCriacaoTicketTests(TestCase):
+    """Feedback de erro no fluxo de criação: erro de banco visível,
+    form inválido com alerta + banner de reanexo, GET sem banner."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="err@acme.com", username="err", password="123",
+            location="ACME", person_id="P01",
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.ambiente = Ambiente.objects.create(nome_ambiente="ERP", numero_ativo="008")
+        self.ambiente.clientes.add(self.user)
+        self.client.force_login(self.user)
+
+    def _docx(self, nome="req.docx"):
+        return SimpleUploadedFile(
+            nome, b"PK\x03\x04docxbytes",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    def _png(self, nome="ev.png"):
+        return SimpleUploadedFile(nome, b"\x89PNG\r\n\x1a\nbytes", content_type="image/png")
+
+    def _data_valida(self, **extra):
+        data = {
+            "sumario": "Erro no ERP",
+            "descricao": "Trava ao salvar",
+            "prioridade": "2",
+            "ambiente": self.ambiente.id,
+            "documento_requisicao": self._docx(),
+        }
+        data.update(extra)
+        return data
+
+    @patch("tickets.views.TicketAnexo.objects.create", side_effect=Exception("db down"))
+    def test_erro_persistencia_mostra_mensagem(self, mock_create):
+        # POST válido com evidência -> create() lança -> rollback, re-render 200
+        # com a mensagem de erro (hoje engolida) e o banner de reanexo visíveis.
+        resp = self.client.post(
+            reverse("tickets:criar_ticket"), self._data_valida(arquivo=self._png())
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(sumario="Erro no ERP").exists())
+        self.assertContains(resp, "Ocorreu um erro ao guardar")
+        self.assertContains(resp, "telefone ou chat")
+        self.assertContains(resp, "Reanexe")
+
+    def test_form_invalido_mostra_alerta_e_banner(self):
+        # POST sem documento_requisicao (obrigatório) -> form inválido.
+        data = {
+            "sumario": "x", "descricao": "y",
+            "prioridade": "2", "ambiente": self.ambiente.id,
+        }
+        resp = self.client.post(reverse("tickets:criar_ticket"), data)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "generalErrorAlert")
+        self.assertContains(resp, "Reanexe")
+
+    def test_get_inicial_sem_banner(self):
+        resp = self.client.get(reverse("tickets:criar_ticket"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "Reanexe")

@@ -313,8 +313,16 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                 logger.error(
                     f"Erro ao persistir ticket no banco (user={request.user.username}): {e}"
                 )
-                messages.error(request, "Ocorreu um erro ao guardar o ticket. Tente novamente.")
-                return render(request, "tickets/criar_ticket.html", {"form": form})
+                messages.error(
+                    request,
+                    "Ocorreu um erro ao guardar o ticket. Por segurança, reanexe "
+                    "os arquivos e tente novamente. Se o erro persistir, contate o "
+                    "suporte por telefone ou chat."
+                )
+                return render(
+                    request, "tickets/criar_ticket.html",
+                    {"form": form, "retry_com_erro": True},
+                )
 
             # A PARTIR DAQUI o ticket está GARANTIDAMENTE salvo. Nada abaixo pode
             # provocar rollback nem mostrar "erro ao guardar" (evita duplicação:
@@ -348,11 +356,18 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                 f"Criação de ticket REJEITADA (form inválido) user={request.user.username}; "
                 f"campos com erro: {list(form.errors.keys())}"
             )
+            return render(
+                request, "tickets/criar_ticket.html",
+                {"form": form, "retry_com_erro": True},
+            )
 
     else:
         form = TicketForm(user=request.user)
 
-    return render(request, "tickets/criar_ticket.html", {"form": form})
+    return render(
+        request, "tickets/criar_ticket.html",
+        {"form": form, "retry_com_erro": False},
+    )
 
 
 # DETALHE DO TICKET
