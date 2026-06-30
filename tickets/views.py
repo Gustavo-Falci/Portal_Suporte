@@ -313,15 +313,19 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                 logger.error(
                     f"Erro ao persistir ticket no banco (user={request.user.username}): {e}"
                 )
-                messages.error(
-                    request,
-                    "Ocorreu um erro ao guardar o ticket. Por segurança, reanexe "
-                    "os arquivos e tente novamente. Se o erro persistir, contate o "
-                    "suporte por telefone ou chat."
-                )
+                # Erro mostrado INLINE no card (não via messages): a página
+                # suprime o bloco messages para não exibir flashes acima do form.
                 return render(
                     request, "tickets/criar_ticket.html",
-                    {"form": form, "retry_com_erro": True},
+                    {
+                        "form": form,
+                        "retry_com_erro": True,
+                        "erro_persistencia": (
+                            "Ocorreu um erro ao guardar o ticket. Por segurança, "
+                            "reanexe os arquivos e tente novamente. Se o erro "
+                            "persistir, contate o suporte por telefone ou chat."
+                        ),
+                    },
                 )
 
             # A PARTIR DAQUI o ticket está GARANTIDAMENTE salvo. Nada abaixo pode
