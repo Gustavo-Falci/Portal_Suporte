@@ -20,14 +20,8 @@
 
             {% if form.errors %}
                 <div id="generalErrorAlert" class="text-center mb-4 fade show" role="alert">
-                    <div class="d-inline-flex flex-column align-items-center text-danger fw-bold small">
-                        {% if form.non_field_errors %}
-                            {% for erro in form.non_field_errors %}
-                            <span><i class="fa-solid fa-circle-exclamation me-2"></i>{{ erro }}</span>
-                            {% endfor %}
-                        {% else %}
-                            <span><i class="fa-solid fa-circle-exclamation me-2"></i>Por favor, corrija os campos destacados abaixo.</span>
-                        {% endif %}
+                    <div class="d-inline-flex align-items-center text-danger fw-bold small">
+                        <span><i class="fa-solid fa-circle-exclamation me-2"></i>Por favor, corrija os campos destacados abaixo.</span>
                     </div>
                 </div>
             {% endif %}
