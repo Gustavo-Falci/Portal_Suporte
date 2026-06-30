@@ -130,6 +130,7 @@
             const BADGE_URL = "{% url 'tickets:notificacoes_badge' %}";
             const INTERVALO_MS = 5000;
             let ultimoCount = null;
+            let ultimoHtml = null;
 
             function animarSino() {
                 document.querySelectorAll(".js-notif-bell").forEach(function (bell) {
@@ -148,10 +149,9 @@
             }
 
             function atualizarLista(html) {
-                if (html == null) return;
+                if (html == null || html === ultimoHtml) return; // só troca quando mudou (sem flicker)
+                ultimoHtml = html;
                 document.querySelectorAll(".js-notif-menu").forEach(function (menu) {
-                    // Não mexe num dropdown aberto: evita flicker e não fecha o menu do usuário.
-                    if (menu.classList.contains("show")) return;
                     menu.innerHTML = html;
                 });
             }
