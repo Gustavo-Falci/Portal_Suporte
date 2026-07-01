@@ -400,6 +400,7 @@ class Notificacao(models.Model):
         ("mensagem", "Nova Mensagem"),
         ("status", "Mudança de Status"),
         ("sistema", "Aviso do Sistema"),
+        ("novo_ticket", "Novo Ticket"),
     )
 
     destinatario = models.ForeignKey(

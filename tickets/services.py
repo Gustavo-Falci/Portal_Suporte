@@ -298,6 +298,78 @@ class NotificationService:
         except Exception as e:
             logger.error(f"Erro no fluxo de notificação (Ticket {ticket.id}): {e}")
 
+    @classmethod
+    def notificar_novo_ticket(cls, ticket: Ticket) -> None:
+
+        """
+        Notifica os membros do grupo 'lider_suporte' quando um ticket é criado.
+        1. Cria notificação interna (Sino) para cada líder.
+        2. Envia e-mail individual (apenas para quem tem e-mail cadastrado).
+        * O criador do ticket nunca é notificado (mesmo que seja líder).
+        """
+
+        try:
+            lideres = Cliente.objects.filter(groups__name="lider_suporte")
+            destinatarios = [lider for lider in lideres if lider != ticket.cliente]
+
+            if not destinatarios:
+                return
+
+            nome_cliente = ticket.cliente.get_full_name() or ticket.cliente.username
+            ticket_ref = str(ticket.maximo_id or ticket.id)
+            preview_msg = f"{nome_cliente}: {ticket.sumario[:60]}..."
+            preview_msg = preview_msg[:255]
+            assunto = f"[Portal Suporte] Novo ticket #{ticket_ref} - {nome_cliente}"
+
+            # Versões escapadas p/ injeção segura no corpo HTML do e-mail
+            nome_cliente_safe = escape(nome_cliente)
+            ticket_ref_safe = escape(ticket_ref)
+            sumario_safe = escape(ticket.sumario)
+            descricao_safe = escape(ticket.descricao[:200]).replace("\n", "<br>")
+
+            link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
+            base_url = getattr(settings, "SITE_URL", "http://localhost:8000").rstrip("/")
+            full_link = f"{base_url}{link_relativo}"
+
+            notificacoes_db = []
+
+            for lider in destinatarios:
+                # --- A. Notificação Interna (Sino) ---
+                notificacoes_db.append(
+                    Notificacao(
+                        destinatario=lider,
+                        ticket=ticket,
+                        titulo="Novo Ticket",
+                        tipo="novo_ticket",
+                        mensagem=preview_msg,
+                        link=link_relativo,
+                    )
+                )
+
+                # --- B. Envio de E-mail ---
+                if lider.email:
+                    nome_lider_safe = escape(lider.first_name or lider.username)
+                    corpo_email = f"""
+                    Olá, {nome_lider_safe}.<br><br>
+                    Um novo ticket <strong>#{ticket_ref_safe}</strong> foi aberto por <strong>{nome_cliente_safe}</strong>.<br><br>
+
+                    <div style="background-color: #f4f4f4; padding: 15px; border-left: 4px solid #0f62fe;">
+                        <strong>{sumario_safe}</strong><br>
+                        {descricao_safe}
+                    </div>
+                    <br>
+                    <a href="{full_link}">Clique aqui para ver o ticket no portal</a>
+                    """
+                    cls._enviar_email_generico([lider.email], assunto, corpo_email)
+
+            if notificacoes_db:
+                Notificacao.objects.bulk_create(notificacoes_db)
+
+        except Exception as e:
+            logger.error(
+                f"Erro ao notificar líderes de novo ticket (Ticket {ticket.id}): {e}"
+            )
+
 
 class MaximoSenderService:
 

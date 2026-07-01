@@ -6,7 +6,8 @@ from django.contrib.auth.models import AnonymousUser, Group
 from django.http import Http404
 from django.urls import reverse
 from unittest.mock import patch
-from .models import Ticket, TicketInteracao, Ambiente, Notificacao, Area
+from django.core import mail
+from .models import Ticket, TicketInteracao, Ambiente, Notificacao, Area, Cliente
 from .forms import TicketForm
 from .services import MaximoSenderService, NotificationService
 from tickets.views import _tickets_visiveis_cliente, _usuario_tem_acesso_ticket
@@ -1678,3 +1679,168 @@ class OlderFileTest(SimpleTestCase):
         with tempfile.TemporaryDirectory() as d:
             with override_settings(BASE_DIR=d):
                 self.assertIsNone(logtail.older_file("qualquer.txt"))
+
+
+class NotificarNovoTicketServiceTests(TestCase):
+    """NotificationService.notificar_novo_ticket: sino + e-mail pro grupo lider_suporte."""
+
+    def setUp(self):
+        self.grupo = Group.objects.create(name="lider_suporte")
+
+        self.criador = Cliente.objects.create_user(
+            email="abre@acme.com", username="abre", password="123",
+        )
+        self.lider1 = Cliente.objects.create_user(
+            email="lider1@itconsol.com", username="lider1", password="123",
+            first_name="Lia",
+        )
+        self.lider2 = Cliente.objects.create_user(
+            email="lider2@itconsol.com", username="lider2", password="123",
+        )
+        self.lider1.groups.add(self.grupo)
+        self.lider2.groups.add(self.grupo)
+
+        self.ticket = Ticket.objects.create(
+            cliente=self.criador, sumario="ERP travando", descricao="Trava ao salvar NF",
+        )
+
+    def test_cria_sino_para_cada_lider(self):
+        NotificationService.notificar_novo_ticket(self.ticket)
+        notifs = Notificacao.objects.filter(tipo="novo_ticket")
+        self.assertEqual(notifs.count(), 2)
+        destinatarios = {n.destinatario for n in notifs}
+        self.assertEqual(destinatarios, {self.lider1, self.lider2})
+        n = notifs.first()
+        self.assertEqual(n.titulo, "Novo Ticket")
+        self.assertEqual(n.ticket, self.ticket)
+        self.assertIn("ERP travando", n.mensagem)
+        self.assertEqual(
+            n.link, reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk})
+        )
+
+    def test_envia_email_para_cada_lider(self):
+        NotificationService.notificar_novo_ticket(self.ticket)
+        self.assertEqual(len(mail.outbox), 2)
+        destinos = {m.to[0] for m in mail.outbox}
+        self.assertEqual(destinos, {"lider1@itconsol.com", "lider2@itconsol.com"})
+        self.assertIn(f"#{self.ticket.id}", mail.outbox[0].subject)
+        self.assertIn("Novo ticket", mail.outbox[0].subject)
+
+    def test_assunto_usa_maximo_id_quando_existe(self):
+        self.ticket.maximo_id = "2277"
+        self.ticket.save(update_fields=["maximo_id"])
+        NotificationService.notificar_novo_ticket(self.ticket)
+        self.assertIn("#2277", mail.outbox[0].subject)
+
+    def test_criador_lider_nao_recebe(self):
+        self.criador.groups.add(self.grupo)
+        NotificationService.notificar_novo_ticket(self.ticket)
+        self.assertEqual(Notificacao.objects.filter(destinatario=self.criador).count(), 0)
+        destinos = {m.to[0] for m in mail.outbox}
+        self.assertNotIn("abre@acme.com", destinos)
+
+    def test_lider_sem_email_recebe_so_sino(self):
+        self.lider2.email = ""
+        self.lider2.save(update_fields=["email"])
+        NotificationService.notificar_novo_ticket(self.ticket)
+        self.assertEqual(Notificacao.objects.filter(tipo="novo_ticket").count(), 2)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["lider1@itconsol.com"])
+
+    def test_sem_lideres_e_noop(self):
+        self.grupo.cliente_groups.clear()
+        NotificationService.notificar_novo_ticket(self.ticket)
+        self.assertEqual(Notificacao.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_html_escapado_no_corpo(self):
+        self.ticket.sumario = "<script>alert(1)</script>"
+        self.ticket.save(update_fields=["sumario"])
+        NotificationService.notificar_novo_ticket(self.ticket)
+        self.assertNotIn("<script>", mail.outbox[0].body)
+        self.assertIn("&lt;script&gt;", mail.outbox[0].body)
+
+    def test_mensagem_do_sino_respeita_max_length(self):
+        self.criador.first_name = "A" * 150
+        self.criador.last_name = "B" * 150
+        self.criador.save(update_fields=["first_name", "last_name"])
+        NotificationService.notificar_novo_ticket(self.ticket)
+        notifs = Notificacao.objects.filter(tipo="novo_ticket")
+        self.assertEqual(notifs.count(), 2)
+        for n in notifs:
+            self.assertLessEqual(len(n.mensagem), 255)
+
+
+class CriarTicketNotificaLideresTests(TestCase):
+    """View criar_ticket notifica o grupo lider_suporte após a integração Maximo."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="abre@acme.com", username="abre", password="123",
+            location="ACME", person_id="P01",
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.ambiente = Ambiente.objects.create(nome_ambiente="ERP", numero_ativo="008")
+        self.ambiente.clientes.add(self.user)
+        self.client.force_login(self.user)
+
+        self.grupo = Group.objects.create(name="lider_suporte")
+        self.lider = Cliente.objects.create_user(
+            email="lider@itconsol.com", username="lider", password="123",
+        )
+        self.lider.groups.add(self.grupo)
+
+    def _docx(self, nome="req.docx"):
+        return SimpleUploadedFile(
+            nome, b"PK\x03\x04docxbytes",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    def _post_valido(self):
+        data = {
+            "sumario": "Erro no ERP",
+            "descricao": "Trava ao salvar",
+            "prioridade": "2",
+            "ambiente": self.ambiente.id,
+            "documento_requisicao": self._docx(),
+        }
+        return self.client.post(reverse("tickets:criar_ticket"), data)
+
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo")
+    @patch("tickets.views.MaximoSenderService.criar_sr")
+    def test_rest_ok_notifica_com_numero_sr(self, mock_criar, mock_email):
+        mock_criar.return_value = {"ticketid": "2277", "href": "https://mx/_ABC--"}
+        resp = self._post_valido()
+        self.assertRedirects(resp, reverse("tickets:ticket_sucesso"))
+
+        notifs = Notificacao.objects.filter(tipo="novo_ticket", destinatario=self.lider)
+        self.assertEqual(notifs.count(), 1)
+
+        emails_lider = [m for m in mail.outbox if m.to == ["lider@itconsol.com"]]
+        self.assertEqual(len(emails_lider), 1)
+        self.assertIn("#2277", emails_lider[0].subject)
+
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo")
+    @patch("tickets.views.MaximoSenderService.criar_sr", return_value=None)
+    def test_fallback_email_notifica_com_id_interno(self, mock_criar, mock_email):
+        resp = self._post_valido()
+        self.assertRedirects(resp, reverse("tickets:ticket_sucesso"))
+        ticket = Ticket.objects.get(sumario="Erro no ERP")
+
+        self.assertEqual(
+            Notificacao.objects.filter(tipo="novo_ticket", destinatario=self.lider).count(), 1
+        )
+        emails_lider = [m for m in mail.outbox if m.to == ["lider@itconsol.com"]]
+        self.assertEqual(len(emails_lider), 1)
+        self.assertIn(f"#{ticket.id}", emails_lider[0].subject)
+
+    @patch("tickets.views.NotificationService.notificar_novo_ticket", side_effect=Exception("boom"))
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo")
+    @patch("tickets.views.MaximoSenderService.criar_sr")
+    def test_falha_na_notificacao_nao_quebra_criacao(self, mock_criar, mock_email, mock_notif):
+        mock_criar.return_value = {"ticketid": "2277", "href": "https://mx/_ABC--"}
+        resp = self._post_valido()
+        self.assertRedirects(resp, reverse("tickets:ticket_sucesso"))
+        self.assertTrue(Ticket.objects.filter(sumario="Erro no ERP").exists())

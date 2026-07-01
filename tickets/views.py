@@ -351,6 +351,13 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
                     "Nossa equipe foi avisada e fará o acompanhamento."
                 )
 
+            # 3. Notificação (sino + e-mail) pros líderes de suporte — depois do
+            #    Maximo pra já sair com o nº da SR quando o REST funcionou.
+            try:
+                NotificationService.notificar_novo_ticket(ticket)
+            except Exception as e:
+                logger.error(f"Erro ao notificar líderes (Ticket {ticket.id}): {e}")
+
             request.session["ticket_sucesso_id"] = ticket.id
             return redirect("tickets:ticket_sucesso")
 
