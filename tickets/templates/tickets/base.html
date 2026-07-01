@@ -54,6 +54,13 @@
                         </a>
                     </li>
                     {% endif %}
+                    {% if user.is_superuser %}
+                    <li class="nav-item ms-lg-2">
+                        <a class="nav-link text-info" href="{% url 'tickets:logs_viewer' %}">
+                            <i class="bi bi-terminal me-1"></i> Logs
+                        </a>
+                    </li>
+                    {% endif %}
 
                     <li class="nav-item">
                         <span class="nav-link text-light-50 me-2">

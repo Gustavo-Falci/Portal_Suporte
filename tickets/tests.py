@@ -1,7 +1,9 @@
 import logging
-from django.test import TestCase, Client, SimpleTestCase, RequestFactory
+import os
+from django.test import TestCase, Client, SimpleTestCase, RequestFactory, override_settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Group
+from django.http import Http404
 from django.urls import reverse
 from unittest.mock import patch
 from .models import Ticket, TicketInteracao, Ambiente, Notificacao, Area
@@ -9,7 +11,7 @@ from .forms import TicketForm
 from .services import MaximoSenderService, NotificationService
 from tickets.views import _tickets_visiveis_cliente, _usuario_tem_acesso_ticket
 from tickets.middleware import RequestLogMiddleware
-from tickets import audit
+from tickets import audit, logtail
 
 
 class AuditHelperTest(SimpleTestCase):
@@ -1362,3 +1364,156 @@ class ErrosCriacaoTicketTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, "corrija os campos destacados")
         self.assertNotContains(resp, "Ocorreu um erro ao guardar")
+
+
+import tempfile
+
+
+class LogTailFilesTest(SimpleTestCase):
+    def test_log_basename_vem_do_settings(self):
+        self.assertEqual(logtail.LOG_BASENAME, "portal_suporte.log")
+
+    def test_resolve_rejeita_traversal(self):
+        for nome in ["../../etc/passwd", "/etc/passwd", "foo.log", "portal_suporte.log.99"]:
+            with self.assertRaises(Http404):
+                logtail.resolve_log_path(nome)
+
+    def test_resolve_aceita_nome_conhecido(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "portal_suporte.log"), "w").close()
+            with override_settings(BASE_DIR=d):
+                caminho = logtail.resolve_log_path("portal_suporte.log")
+                self.assertEqual(caminho, os.path.join(d, "portal_suporte.log"))
+
+    def test_resolve_404_se_nome_valido_mas_arquivo_ausente(self):
+        with tempfile.TemporaryDirectory() as d:
+            with override_settings(BASE_DIR=d):
+                with self.assertRaises(Http404):
+                    logtail.resolve_log_path("portal_suporte.log")
+
+    def test_available_lista_ativo_e_rotacionados_existentes(self):
+        with tempfile.TemporaryDirectory() as d:
+            for nome in ["portal_suporte.log", "portal_suporte.log.1", "portal_suporte.log.3"]:
+                open(os.path.join(d, nome), "w").close()
+            with override_settings(BASE_DIR=d):
+                self.assertEqual(
+                    logtail.available_log_files(),
+                    ["portal_suporte.log", "portal_suporte.log.1", "portal_suporte.log.3"],
+                )
+
+    def test_tail_lines_retorna_ultimas_n(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.log")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("l1\nl2\nl3\nl4\n")
+            self.assertEqual(logtail.tail_lines(p, 2), ["l3", "l4"])
+
+    def test_tail_lines_arquivo_menor_que_n(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.log")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("only\n")
+            self.assertEqual(logtail.tail_lines(p, 200), ["only"])
+
+
+class LogTailStreamTest(SimpleTestCase):
+    def _drain(self, gen) -> list[str]:
+        return list(gen)
+
+    def test_emite_linhas_existentes_desde_pos(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.log")
+            with open(p, "wb") as f:
+                f.write(b"linha A\nlinha B\n")
+            saida = self._drain(
+                logtail.stream_events(p, 0, duration=0.05, poll_interval=0.01)
+            )
+            texto = "".join(saida)
+            self.assertIn("data: linha A\n\n", texto)
+            self.assertIn("data: linha B\n\n", texto)
+
+    def test_emite_evento_pos_com_offset(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.log")
+            with open(p, "wb") as f:
+                f.write(b"abc\n")  # 4 bytes
+            saida = "".join(
+                logtail.stream_events(p, 0, duration=0.05, poll_interval=0.01)
+            )
+            self.assertIn("event: pos\ndata: 4\n\n", saida)
+
+    def test_comeca_do_pos_e_ignora_anteriores(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.log")
+            with open(p, "wb") as f:
+                f.write(b"velha\nnova\n")  # "velha\n" = 6 bytes
+            saida = "".join(
+                logtail.stream_events(p, 6, duration=0.05, poll_interval=0.01)
+            )
+            self.assertIn("data: nova\n\n", saida)
+            self.assertNotIn("velha", saida)
+
+    def test_detecta_rotacao_quando_arquivo_encolhe(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.log")
+            with open(p, "wb") as f:
+                f.write(b"pouco\n")  # 6 bytes
+            saida = "".join(
+                logtail.stream_events(p, 999, duration=0.05, poll_interval=0.01)
+            )
+            self.assertIn("event: rotated\ndata: 0\n\n", saida)
+            self.assertIn("data: pouco\n\n", saida)
+
+
+class LogsViewTest(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.superuser = User.objects.create_superuser(
+            username="root", email="root@itconsol.com", password="x"
+        )
+        self.comum = User.objects.create_user(
+            username="joao", email="joao@empresa.com", password="x"
+        )
+
+    def _garante_log_ativo(self):
+        from django.conf import settings
+        caminho = os.path.join(str(settings.BASE_DIR), logtail.LOG_BASENAME)
+        if not os.path.isfile(caminho):
+            open(caminho, "a", encoding="utf-8").close()
+
+    def test_anonimo_redireciona_login(self):
+        resp = self.client.get(reverse("tickets:logs_viewer"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login/", resp["Location"])
+
+    def test_usuario_comum_404(self):
+        self.client.force_login(self.comum)
+        resp = self.client.get(reverse("tickets:logs_viewer"))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_superuser_200_e_usa_template(self):
+        self.client.force_login(self.superuser)
+        resp = self.client.get(reverse("tickets:logs_viewer"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertTemplateUsed(resp, "tickets/logs_viewer.html")
+        self.assertContains(resp, 'id="log-container"')
+        self.assertContains(resp, "new EventSource")
+
+    def test_stream_content_type_e_headers(self):
+        self._garante_log_ativo()
+        self.client.force_login(self.superuser)
+        resp = self.client.get(
+            reverse("tickets:logs_stream"),
+            {"file": logtail.LOG_BASENAME, "pos": "0", "duration": "0.01"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "text/event-stream")
+        self.assertEqual(resp["X-Accel-Buffering"], "no")
+        b"".join(resp.streaming_content)  # drena o generator
+
+    def test_stream_arquivo_invalido_404(self):
+        self.client.force_login(self.superuser)
+        resp = self.client.get(
+            reverse("tickets:logs_stream"), {"file": "../../etc/passwd"}
+        )
+        self.assertEqual(resp.status_code, 404)

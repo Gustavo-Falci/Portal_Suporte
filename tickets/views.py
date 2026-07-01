@@ -18,6 +18,8 @@ from django.contrib.auth.forms import SetPasswordForm
 from .forms import EmailAuthenticationForm
 from django.conf import settings
 from django.http import Http404
+from django.http import StreamingHttpResponse
+from . import logtail
 from typing import Any
 import logging
 import os
@@ -913,3 +915,53 @@ def login_view(request: HttpRequest) -> HttpResponse:
     }
     
     return render(request, "tickets/login.html", context)
+
+
+def _exige_superuser(request: HttpRequest) -> None:
+    """Bloqueia não-superuser. Autenticado-mas-não-superuser → 404 (esconde a
+    existência da página); anônimo será redirecionado pelo @login_required."""
+    if not request.user.is_superuser:
+        raise Http404()
+
+
+@login_required(login_url="/login/")
+def logs_viewer(request: HttpRequest) -> HttpResponse:
+    """Página de visualização de logs em tempo real (somente superuser)."""
+    _exige_superuser(request)
+    arquivos = logtail.available_log_files()
+    selecionado = request.GET.get("file") or logtail.LOG_BASENAME
+    caminho = logtail.resolve_log_path(selecionado)
+    linhas = logtail.tail_lines(caminho, 200)
+    pos = os.path.getsize(caminho)
+    contexto = {
+        "arquivos": arquivos,
+        "selecionado": selecionado,
+        "linhas": linhas,
+        "pos": pos,
+    }
+    return render(request, "tickets/logs_viewer.html", contexto)
+
+
+@login_required(login_url="/login/")
+def logs_stream(request: HttpRequest) -> StreamingHttpResponse:
+    """Endpoint SSE: emite linhas novas do log escolhido (somente superuser)."""
+    _exige_superuser(request)
+    selecionado = request.GET.get("file") or logtail.LOG_BASENAME
+    caminho = logtail.resolve_log_path(selecionado)
+    try:
+        pos = int(request.GET.get("pos", "0"))
+    except ValueError:
+        pos = 0
+    try:
+        duration = float(request.GET.get("duration", "30"))
+    except ValueError:
+        duration = 30.0
+    duration = max(0.0, min(duration, 30.0))  # teto de 30s por conexão
+
+    resposta = StreamingHttpResponse(
+        logtail.stream_events(caminho, pos, duration=duration),
+        content_type="text/event-stream",
+    )
+    resposta["Cache-Control"] = "no-cache"
+    resposta["X-Accel-Buffering"] = "no"  # impede buffering de SSE por proxy/nginx
+    return resposta

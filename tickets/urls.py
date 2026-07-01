@@ -27,6 +27,10 @@ urlpatterns = [
     # Área de Suporte
     path("fila-atendimento/", views.fila_atendimento, name="fila_atendimento"),
 
+    # Logs em tempo real (somente superuser)
+    path("logs/", views.logs_viewer, name="logs_viewer"),
+    path("logs/stream/", views.logs_stream, name="logs_stream"),
+
     # Funcionalidades Auxiliares
     path(
         "interacao/anexo/<int:interacao_id>/",

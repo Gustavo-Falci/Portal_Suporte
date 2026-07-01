@@ -1,0 +1,96 @@
+{% extends "tickets/base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+    <h5 class="mb-0 me-2">Logs em tempo real</h5>
+    <select id="file-select" class="form-select form-select-sm" style="width:auto;min-width:200px">
+      {% for nome in arquivos %}
+        <option value="{{ nome }}" {% if nome == selecionado %}selected{% endif %}>{{ nome }}</option>
+      {% endfor %}
+    </select>
+    <input id="filter-box" type="text" class="form-control form-control-sm"
+           placeholder="filtrar..." style="width:220px">
+    <div class="form-check ms-2">
+      <input class="form-check-input" type="checkbox" id="autoscroll" checked>
+      <label class="form-check-label" for="autoscroll">autoscroll</label>
+    </div>
+    <span id="status" class="badge bg-secondary ms-2">conectando…</span>
+  </div>
+
+  <pre id="log-container"
+       style="height:75vh;overflow:auto;background:#0d1117;color:#c9d1d9;
+              padding:.75rem;border-radius:.375rem;font-size:.8rem;margin:0"></pre>
+</div>
+
+{{ selecionado|json_script:"sel-file" }}
+{{ linhas|json_script:"linhas-iniciais" }}
+
+<script nonce="{{ request.csp_nonce }}">
+(function () {
+  const container = document.getElementById("log-container");
+  const filterBox = document.getElementById("filter-box");
+  const autoscroll = document.getElementById("autoscroll");
+  const statusEl = document.getElementById("status");
+  const fileSelect = document.getElementById("file-select");
+
+  const fname = JSON.parse(document.getElementById("sel-file").textContent);
+  let pos = {{ pos }};
+
+  function levelClass(text) {
+    if (/\bERROR\b|\bCRITICAL\b/.test(text)) return "log-error";
+    if (/\bWARNING\b/.test(text)) return "log-warn";
+    return "";
+  }
+
+  function matchesFilter(text) {
+    const q = filterBox.value.trim().toLowerCase();
+    return !q || text.toLowerCase().includes(q);
+  }
+
+  function appendLine(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    const cls = levelClass(text);
+    if (cls) div.className = cls;
+    div.style.display = matchesFilter(text) ? "" : "none";
+    container.appendChild(div);
+    if (autoscroll.checked) container.scrollTop = container.scrollHeight;
+  }
+
+  JSON.parse(document.getElementById("linhas-iniciais").textContent).forEach(appendLine);
+
+  filterBox.addEventListener("input", function () {
+    container.childNodes.forEach(function (n) {
+      if (n.textContent !== undefined)
+        n.style.display = matchesFilter(n.textContent) ? "" : "none";
+    });
+  });
+
+  fileSelect.addEventListener("change", function () {
+    window.location = "?file=" + encodeURIComponent(fileSelect.value);
+  });
+
+  let es = null;
+  function connect() {
+    if (es) es.close();
+    es = new EventSource("stream/?file=" + encodeURIComponent(fname) + "&pos=" + pos);
+    es.onopen = function () { statusEl.className = "badge bg-success ms-2"; statusEl.textContent = "ao vivo"; };
+    es.onmessage = function (e) { appendLine(e.data); };
+    es.addEventListener("pos", function (e) { pos = parseInt(e.data, 10) || pos; });
+    es.addEventListener("rotated", function () { pos = 0; });
+    es.onerror = function () {
+      statusEl.className = "badge bg-warning text-dark ms-2";
+      statusEl.textContent = "reconectando…";
+      es.close();
+      setTimeout(connect, 800);  // reconnect manual com o pos mais recente
+    };
+  }
+  connect();
+})();
+</script>
+
+<style nonce="{{ request.csp_nonce }}">
+  #log-container .log-error { color: #ff7b72; }
+  #log-container .log-warn  { color: #d29922; }
+</style>
+{% endblock %}
