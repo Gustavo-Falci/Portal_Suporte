@@ -198,6 +198,10 @@
                             {{ ticket.data_criacao|date:"d/m/Y H:i" }}
                         </li>
                         <li class="mb-2">
+                            <strong>Solicitado por:</strong><br>
+                            {{ ticket.cliente.get_full_name|default:ticket.cliente.username }}
+                        </li>
+                        <li class="mb-2">
                             <strong>Ambiente:</strong><br>
                             {{ ticket.ambiente.nome_ambiente }}
                         </li>

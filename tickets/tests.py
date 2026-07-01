@@ -1844,3 +1844,39 @@ class CriarTicketNotificaLideresTests(TestCase):
         resp = self._post_valido()
         self.assertRedirects(resp, reverse("tickets:ticket_sucesso"))
         self.assertTrue(Ticket.objects.filter(sumario="Erro no ERP").exists())
+
+
+class DetalheSolicitadoPorTests(TestCase):
+    """Card lateral do detalhe exibe 'Solicitado por' com o nome de quem abriu."""
+
+    def setUp(self):
+        self.client = Client()
+        self.dono = Cliente.objects.create_user(
+            email="dono@teste.com", username="dono.solicitante", password="123",
+            first_name="Maria", last_name="Silva",
+        )
+        self.dono.precisa_trocar_senha = False
+        self.dono.save()
+        self.ticket = Ticket.objects.create(
+            cliente=self.dono, sumario="Erro X", descricao="detalhe"
+        )
+        self.client.force_login(self.dono)
+
+    def _get_detalhe(self):
+        return self.client.get(
+            reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk})
+        )
+
+    def test_exibe_solicitado_por_com_nome_completo(self):
+        response = self._get_detalhe()
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Solicitado por")
+        self.assertContains(response, "Maria Silva")
+
+    def test_fallback_para_username_sem_nome(self):
+        self.dono.first_name = ""
+        self.dono.last_name = ""
+        self.dono.save(update_fields=["first_name", "last_name"])
+        response = self._get_detalhe()
+        self.assertContains(response, "Solicitado por")
+        self.assertContains(response, "dono.solicitante")
