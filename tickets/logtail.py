@@ -93,3 +93,66 @@ def stream_events(
             else:
                 yield ": ping\n\n"
             time.sleep(poll_interval)
+
+
+def read_lines_before(
+    path: str,
+    end_offset: int,
+    n: int = 500,
+) -> tuple[list[str], int]:
+    """Lê até `n` linhas completas que terminam antes de `end_offset`.
+
+    Lê o arquivo em blocos de 64KB de trás pra frente (não carrega tudo).
+    Retorna as linhas em ordem cronológica (sem `\\n`) e o byte onde a
+    primeira linha retornada começa — usar esse valor como `end_offset` da
+    próxima chamada continua o histórico sem gap nem duplicata. `start_offset`
+    é 0 quando alcançou o início do arquivo.
+    """
+    if end_offset <= 0:
+        return [], 0
+    if n <= 0:
+        return [], end_offset
+    block = 64 * 1024
+    data = b""
+    pos = end_offset
+    with open(path, "rb") as f:
+        # Acumula blocos até ter mais de `n` quebras de linha OU chegar ao início.
+        while pos > 0 and data.count(b"\n") <= n:
+            read_size = min(block, pos)
+            pos -= read_size
+            f.seek(pos)
+            data = f.read(read_size) + data
+    start_offset = pos  # byte inicial do buffer `data` no arquivo
+    # Se não chegamos ao início, a primeira linha do buffer é parcial → descarta.
+    if start_offset > 0:
+        nl = data.find(b"\n")
+        start_offset += nl + 1
+        data = data[nl + 1:]
+    # `data` cobre [start_offset, end_offset), só linhas completas. `end_offset`
+    # é sempre alinhado a início de linha (size após \n, ou um start anterior),
+    # então tira o \n final antes do split.
+    body = data[:-1] if data.endswith(b"\n") else data
+    raw = body.split(b"\n") if body else []
+    # Mantém só as últimas `n`; avança start_offset pelos bytes das descartadas.
+    if len(raw) > n:
+        extras = raw[:-n]
+        start_offset += sum(len(l) + 1 for l in extras)  # +1 pelo \n de cada
+        raw = raw[-n:]
+    linhas = [l.rstrip(b"\r").decode("utf-8", errors="replace") for l in raw]
+    return linhas, start_offset
+
+
+def older_file(name: str) -> str | None:
+    """Próximo arquivo de log mais antigo que existe após `name`.
+
+    Ordem newest→oldest: LOG_BASENAME, LOG_BASENAME.1, ... Retorna o primeiro
+    nome existente depois de `name`, ou None se não houver (ou `name` inválido).
+    """
+    nomes = _allowed_names()
+    if name not in nomes:
+        return None
+    base = str(settings.BASE_DIR)
+    for cand in nomes[nomes.index(name) + 1:]:
+        if os.path.isfile(os.path.join(base, cand)):
+            return cand
+    return None

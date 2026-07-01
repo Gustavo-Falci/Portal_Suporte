@@ -931,13 +931,15 @@ def logs_viewer(request: HttpRequest) -> HttpResponse:
     arquivos = logtail.available_log_files()
     selecionado = request.GET.get("file") or logtail.LOG_BASENAME
     caminho = logtail.resolve_log_path(selecionado)
-    linhas = logtail.tail_lines(caminho, 200)
-    pos = os.path.getsize(caminho)
+    size = os.path.getsize(caminho)
+    linhas, top_offset = logtail.read_lines_before(caminho, size, 200)
+    pos = size
     contexto = {
         "arquivos": arquivos,
         "selecionado": selecionado,
         "linhas": linhas,
         "pos": pos,
+        "top_offset": top_offset,
     }
     return render(request, "tickets/logs_viewer.html", contexto)
 
@@ -965,3 +967,36 @@ def logs_stream(request: HttpRequest) -> StreamingHttpResponse:
     resposta["Cache-Control"] = "no-cache"
     resposta["X-Accel-Buffering"] = "no"  # impede buffering de SSE por proxy/nginx
     return resposta
+
+
+@login_required(login_url="/login/")
+def logs_history(request: HttpRequest) -> JsonResponse:
+    """Paginação pra trás do histórico de logs (somente superuser)."""
+    _exige_superuser(request)
+    selecionado = request.GET.get("file") or logtail.LOG_BASENAME
+    caminho = logtail.resolve_log_path(selecionado)
+    try:
+        offset = int(request.GET.get("offset", "0"))
+    except ValueError:
+        offset = 0
+    try:
+        n = int(request.GET.get("n", "500"))
+    except ValueError:
+        n = 500
+    n = max(1, min(n, 2000))
+    # Clampa o offset ao tamanho do arquivo: um offset gigante (ex. via GET
+    # cross-origin) faria read_lines_before varrer o arquivo de trás pra frente
+    # em passos de 64KB por ~offset/65536 iterações, prendendo o worker.
+    offset = max(0, min(offset, os.path.getsize(caminho)))
+
+    linhas, start_offset = logtail.read_lines_before(caminho, offset, n)
+    if start_offset <= 0:
+        older = logtail.older_file(selecionado)
+        if older:
+            older_path = logtail.resolve_log_path(older)
+            cursor = {"file": older, "offset": os.path.getsize(older_path)}
+        else:
+            cursor = None
+    else:
+        cursor = {"file": selecionado, "offset": start_offset}
+    return JsonResponse({"lines": linhas, "cursor": cursor})

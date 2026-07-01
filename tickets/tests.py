@@ -1498,6 +1498,8 @@ class LogsViewTest(TestCase):
         self.assertTemplateUsed(resp, "tickets/logs_viewer.html")
         self.assertContains(resp, 'id="log-container"')
         self.assertContains(resp, "new EventSource")
+        self.assertIn("top_offset", resp.context)
+        self.assertContains(resp, "carregarHistorico")
 
     def test_stream_content_type_e_headers(self):
         self._garante_log_ativo()
@@ -1517,3 +1519,162 @@ class LogsViewTest(TestCase):
             reverse("tickets:logs_stream"), {"file": "../../etc/passwd"}
         )
         self.assertEqual(resp.status_code, 404)
+
+
+class LogsHistoryViewTest(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.superuser = User.objects.create_superuser(
+            username="root2", email="root2@itconsol.com", password="x"
+        )
+        self.comum = User.objects.create_user(
+            username="joao2", email="joao2@empresa.com", password="x"
+        )
+
+    def _escreve(self, d, nome, conteudo: bytes) -> int:
+        p = os.path.join(d, nome)
+        with open(p, "wb") as f:
+            f.write(conteudo)
+        return os.path.getsize(p)
+
+    def test_comum_404(self):
+        with tempfile.TemporaryDirectory() as d, override_settings(BASE_DIR=d):
+            self._escreve(d, logtail.LOG_BASENAME, b"a\n")
+            self.client.force_login(self.comum)
+            resp = self.client.get(reverse("tickets:logs_history"), {"file": logtail.LOG_BASENAME})
+            self.assertEqual(resp.status_code, 404)
+
+    def test_traversal_404(self):
+        with tempfile.TemporaryDirectory() as d, override_settings(BASE_DIR=d):
+            self.client.force_login(self.superuser)
+            resp = self.client.get(reverse("tickets:logs_history"), {"file": "../../etc/passwd"})
+            self.assertEqual(resp.status_code, 404)
+
+    def test_retorna_linhas_e_cursor(self):
+        with tempfile.TemporaryDirectory() as d, override_settings(BASE_DIR=d):
+            size = self._escreve(d, logtail.LOG_BASENAME, b"a\nb\nc\nd\n")
+            self.client.force_login(self.superuser)
+            resp = self.client.get(reverse("tickets:logs_history"), {
+                "file": logtail.LOG_BASENAME, "offset": str(size), "n": "2",
+            })
+            self.assertEqual(resp.status_code, 200)
+            dados = resp.json()
+            self.assertEqual(dados["lines"], ["c", "d"])
+            self.assertEqual(dados["cursor"], {"file": logtail.LOG_BASENAME, "offset": 4})
+
+    def test_fim_do_arquivo_sem_rotacionado_cursor_null(self):
+        with tempfile.TemporaryDirectory() as d, override_settings(BASE_DIR=d):
+            self._escreve(d, logtail.LOG_BASENAME, b"a\nb\n")  # só o ativo existe
+            self.client.force_login(self.superuser)
+            resp = self.client.get(reverse("tickets:logs_history"), {
+                "file": logtail.LOG_BASENAME, "offset": "4", "n": "500",
+            })
+            dados = resp.json()
+            self.assertEqual(dados["lines"], ["a", "b"])
+            self.assertIsNone(dados["cursor"])
+
+    def test_rollover_para_rotacionado(self):
+        with tempfile.TemporaryDirectory() as d, override_settings(BASE_DIR=d):
+            self._escreve(d, logtail.LOG_BASENAME, b"novo1\nnovo2\n")
+            tam_rot = self._escreve(d, f"{logtail.LOG_BASENAME}.1", b"velho1\nvelho2\n")
+            self.client.force_login(self.superuser)
+            # offset = EOF do ativo → esgota o ativo; cursor deve rolar pro .1 no EOF dele
+            resp = self.client.get(reverse("tickets:logs_history"), {
+                "file": logtail.LOG_BASENAME, "offset": "12", "n": "500",
+            })
+            dados = resp.json()
+            self.assertEqual(dados["lines"], ["novo1", "novo2"])
+            self.assertEqual(dados["cursor"]["file"], f"{logtail.LOG_BASENAME}.1")
+            self.assertEqual(dados["cursor"]["offset"], tam_rot)
+
+    def test_n_limitado_a_2000(self):
+        with tempfile.TemporaryDirectory() as d, override_settings(BASE_DIR=d):
+            self._escreve(d, logtail.LOG_BASENAME, b"a\nb\n")
+            self.client.force_login(self.superuser)
+            resp = self.client.get(reverse("tickets:logs_history"), {
+                "file": logtail.LOG_BASENAME, "offset": "4", "n": "99999",
+            })
+            self.assertEqual(resp.status_code, 200)  # não estoura, n é limitado internamente
+
+    def test_offset_gigante_e_clampado(self):
+        # offset absurdo (ataque de worker-hang) deve ser clampado ao tamanho do
+        # arquivo e responder rápido, retornando o conteúdo real.
+        with tempfile.TemporaryDirectory() as d, override_settings(BASE_DIR=d):
+            self._escreve(d, logtail.LOG_BASENAME, b"a\nb\nc\n")
+            self.client.force_login(self.superuser)
+            resp = self.client.get(reverse("tickets:logs_history"), {
+                "file": logtail.LOG_BASENAME, "offset": "10000000000000000000", "n": "500",
+            })
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.json()["lines"], ["a", "b", "c"])
+
+
+class ReadLinesBeforeTest(SimpleTestCase):
+    def _escreve(self, d, nome, conteudo):
+        p = os.path.join(d, nome)
+        with open(p, "wb") as f:
+            f.write(conteudo)
+        return p
+
+    def test_ultimas_n_a_partir_do_fim(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._escreve(d, "x.log", b"l1\nl2\nl3\nl4\n")
+            linhas, start = logtail.read_lines_before(p, os.path.getsize(p), 2)
+            self.assertEqual(linhas, ["l3", "l4"])
+            # start aponta pro começo de "l3" = após "l1\nl2\n" = 6 bytes
+            self.assertEqual(start, 6)
+
+    def test_arquivo_menor_que_n_retorna_tudo_e_start_zero(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._escreve(d, "x.log", b"a\nb\n")
+            linhas, start = logtail.read_lines_before(p, os.path.getsize(p), 500)
+            self.assertEqual(linhas, ["a", "b"])
+            self.assertEqual(start, 0)
+
+    def test_end_offset_zero(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._escreve(d, "x.log", b"a\nb\n")
+            self.assertEqual(logtail.read_lines_before(p, 0, 10), ([], 0))
+
+    def test_encadeamento_sem_gap_nem_duplicata(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._escreve(d, "x.log", b"l1\nl2\nl3\nl4\nl5\n")
+            size = os.path.getsize(p)
+            b1, s1 = logtail.read_lines_before(p, size, 2)   # l4,l5
+            b2, s2 = logtail.read_lines_before(p, s1, 2)      # l2,l3
+            b3, s3 = logtail.read_lines_before(p, s2, 2)      # l1
+            self.assertEqual(b1, ["l4", "l5"])
+            self.assertEqual(b2, ["l2", "l3"])
+            self.assertEqual(b3, ["l1"])
+            self.assertEqual(s3, 0)
+
+    def test_bloco_maior_que_64k_pega_ultimas_n(self):
+        with tempfile.TemporaryDirectory() as d:
+            conteudo = b"".join(b"linha%05d\n" % i for i in range(20000))  # ~160KB
+            p = self._escreve(d, "x.log", conteudo)
+            linhas, _ = logtail.read_lines_before(p, os.path.getsize(p), 3)
+            self.assertEqual(linhas, ["linha19997", "linha19998", "linha19999"])
+
+    def test_decodifica_utf8_com_replace(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._escreve(d, "x.log", b"ok\n\xff\xfe ruim\n")
+            linhas, _ = logtail.read_lines_before(p, os.path.getsize(p), 1)
+            self.assertEqual(len(linhas), 1)
+            self.assertIn("ruim", linhas[0])  # bytes inválidos viram , não quebra
+
+
+class OlderFileTest(SimpleTestCase):
+    def test_pula_inexistentes_e_encadeia(self):
+        with tempfile.TemporaryDirectory() as d:
+            for nome in ["portal_suporte.log", "portal_suporte.log.1", "portal_suporte.log.3"]:
+                open(os.path.join(d, nome), "w").close()
+            with override_settings(BASE_DIR=d):
+                self.assertEqual(logtail.older_file("portal_suporte.log"), "portal_suporte.log.1")
+                # .2 não existe → pula pra .3
+                self.assertEqual(logtail.older_file("portal_suporte.log.1"), "portal_suporte.log.3")
+                self.assertIsNone(logtail.older_file("portal_suporte.log.3"))
+
+    def test_nome_fora_da_whitelist(self):
+        with tempfile.TemporaryDirectory() as d:
+            with override_settings(BASE_DIR=d):
+                self.assertIsNone(logtail.older_file("qualquer.txt"))

@@ -15,6 +15,7 @@
       <label class="form-check-label" for="autoscroll">autoscroll</label>
     </div>
     <span id="status" class="badge bg-secondary ms-2">conectando…</span>
+    <span id="hist-status" class="badge bg-secondary ms-2"></span>
   </div>
 
   <pre id="log-container"
@@ -47,17 +48,54 @@
     return !q || text.toLowerCase().includes(q);
   }
 
-  function appendLine(text) {
+  function criarLinha(text) {
     const div = document.createElement("div");
     div.textContent = text;
     const cls = levelClass(text);
     if (cls) div.className = cls;
     div.style.display = matchesFilter(text) ? "" : "none";
-    container.appendChild(div);
+    return div;
+  }
+
+  function appendLine(text) {
+    container.appendChild(criarLinha(text));
     if (autoscroll.checked) container.scrollTop = container.scrollHeight;
   }
 
   JSON.parse(document.getElementById("linhas-iniciais").textContent).forEach(appendLine);
+
+  const histStatus = document.getElementById("hist-status");
+  let topCursor = { file: fname, offset: {{ top_offset }} };
+  let carregandoHist = false;
+
+  async function carregarHistorico() {
+    if (carregandoHist || !topCursor) return;
+    carregandoHist = true;
+    histStatus.textContent = "carregando histórico…";
+    try {
+      const url = "history/?file=" + encodeURIComponent(topCursor.file) +
+                  "&offset=" + topCursor.offset + "&n=500";
+      const resp = await fetch(url);
+      if (!resp.ok) { topCursor = null; histStatus.textContent = ""; return; }
+      const dados = await resp.json();
+      const alturaAntes = container.scrollHeight;
+      const frag = document.createDocumentFragment();
+      dados.lines.forEach(function (t) { frag.appendChild(criarLinha(t)); });
+      container.insertBefore(frag, container.firstChild);
+      container.scrollTop += container.scrollHeight - alturaAntes;  // não pula
+      topCursor = dados.cursor;
+      histStatus.textContent = topCursor ? "" : "início do histórico";
+    } catch (e) {
+      // erro de rede: mantém o cursor e tenta de novo no próximo scroll
+      histStatus.textContent = "";
+    } finally {
+      carregandoHist = false;
+    }
+  }
+
+  container.addEventListener("scroll", function () {
+    if (container.scrollTop < 40) carregarHistorico();
+  });
 
   filterBox.addEventListener("input", function () {
     container.childNodes.forEach(function (n) {
