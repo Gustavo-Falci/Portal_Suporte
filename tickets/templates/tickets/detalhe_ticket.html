@@ -335,6 +335,8 @@
                 if (e.target.closest(".js-edit-btn")) {
                     const box = row.querySelector(".js-edit-box");
                     const texto = row.querySelector(".js-msg-texto");
+                    // Já está em edição? Ignora cliques repetidos (senão texto.offsetWidth=0 colapsa a largura)
+                    if (box && !box.classList.contains("d-none")) return;
                     if (box && texto) {
                         // Preserva a largura atual da mensagem (a bolha é shrink-to-fit;
                         // sem isso ela encolhe ao trocar o <p> pela textarea).
@@ -350,7 +352,7 @@
                         }
                         // Rola para baixo pra revelar os botões Salvar/Cancelar
                         const salvarBtn = box.querySelector(".js-edit-save");
-                        if (salvarBtn) salvarBtn.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                        if (salvarBtn) salvarBtn.scrollIntoView({ behavior: "smooth", block: "end" });
                     }
                     return;
                 }
