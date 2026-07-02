@@ -339,7 +339,11 @@
                         texto.classList.add("d-none");
                         box.classList.remove("d-none");
                         const ta = box.querySelector(".js-edit-textarea");
-                        if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+                        if (ta) {
+                            autoGrow(ta); // ajusta a altura ao tamanho da mensagem
+                            ta.focus();
+                            ta.setSelectionRange(ta.value.length, ta.value.length);
+                        }
                     }
                     return;
                 }
@@ -401,6 +405,13 @@
                     })
                     .catch(() => { alert("Erro de conexão ao editar."); })
                     .finally(() => { saveBtn.disabled = false; });
+                }
+            });
+
+            // Auto-expande a textarea de edição enquanto o usuário digita
+            chatContainer.addEventListener("input", function (e) {
+                if (e.target.classList.contains("js-edit-textarea")) {
+                    autoGrow(e.target);
                 }
             });
         }
