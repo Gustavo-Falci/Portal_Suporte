@@ -1911,3 +1911,21 @@ class InteracaoEdicaoModelTests(TestCase):
         self.interacao.save(update_fields=["data_criacao"])
         self.interacao.refresh_from_db()
         self.assertFalse(self.interacao.pode_editar(self.autor))
+
+
+class PodeEditarFiltroTests(TestCase):
+    def setUp(self):
+        self.autor = Cliente.objects.create(email="a2@teste.com", username="autor2")
+        self.outro = Cliente.objects.create(email="b2@teste.com", username="outro2")
+        self.ticket = Ticket.objects.create(cliente=self.autor, sumario="S", descricao="D")
+        self.interacao = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.autor, mensagem="x"
+        )
+
+    def test_filtro_true_para_autor(self):
+        from tickets.templatetags.ticket_tags import pode_editar
+        self.assertTrue(pode_editar(self.interacao, self.autor))
+
+    def test_filtro_false_para_outro(self):
+        from tickets.templatetags.ticket_tags import pode_editar
+        self.assertFalse(pode_editar(self.interacao, self.outro))
