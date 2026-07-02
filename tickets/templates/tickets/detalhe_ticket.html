@@ -290,8 +290,18 @@
 
 {# Botão de editar mensagem: só aparece ao passar o mouse na bolha do chat #}
 <style>
-    .chat-edit-btn { opacity: 0; transition: opacity 0.15s ease-in-out; color: inherit; }
-    .chat-row:hover .chat-edit-btn { opacity: 0.7; }
+    /* Lápis fica à direita do horário; oculto colapsa a largura (horário encosta na direita).
+       No hover da bolha ele expande, empurrando o horário para a esquerda. */
+    .chat-edit-btn {
+        opacity: 0;
+        max-width: 0;
+        margin-left: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        transition: opacity 0.15s ease-in-out, max-width 0.15s ease-in-out, margin-left 0.15s ease-in-out;
+        color: inherit;
+    }
+    .chat-row:hover .chat-edit-btn { opacity: 0.7; max-width: 1.5rem; margin-left: 0.5rem; }
     .chat-edit-btn:hover { opacity: 1 !important; }
 </style>
 

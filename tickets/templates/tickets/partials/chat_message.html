@@ -35,19 +35,19 @@
                 
             </small>
             <div class="d-flex align-items-center ms-3">
-                {% if interacao|pode_editar:request.user %}
-                    <button type="button"
-                            class="btn btn-sm p-0 border-0 bg-transparent js-edit-btn chat-edit-btn me-2"
-                            title="Editar mensagem" aria-label="Editar mensagem">
-                        <i class="bi bi-pencil" style="font-size: 0.75rem;"></i>
-                    </button>
-                {% endif %}
                 <small class="font-monospace" style="font-size: 0.7rem; opacity: 0.9;">
                     {{ interacao.data_criacao|date:"d/m/Y H:i" }}
                     {% if interacao.foi_editado %}
                         <span class="fst-italic" style="opacity: 0.8;">(editado)</span>
                     {% endif %}
                 </small>
+                {% if interacao|pode_editar:request.user %}
+                    <button type="button"
+                            class="btn btn-sm p-0 border-0 bg-transparent js-edit-btn chat-edit-btn"
+                            title="Editar mensagem" aria-label="Editar mensagem">
+                        <i class="bi bi-pencil" style="font-size: 0.75rem;"></i>
+                    </button>
+                {% endif %}
             </div>
         </div>
 
