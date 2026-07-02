@@ -336,10 +336,14 @@
                     const box = row.querySelector(".js-edit-box");
                     const texto = row.querySelector(".js-msg-texto");
                     if (box && texto) {
+                        // Preserva a largura atual da mensagem (a bolha é shrink-to-fit;
+                        // sem isso ela encolhe ao trocar o <p> pela textarea).
+                        const larguraMsg = texto.offsetWidth;
                         texto.classList.add("d-none");
                         box.classList.remove("d-none");
                         const ta = box.querySelector(".js-edit-textarea");
                         if (ta) {
+                            ta.style.width = larguraMsg + "px";
                             autoGrow(ta); // ajusta a altura ao tamanho da mensagem
                             ta.focus();
                             ta.setSelectionRange(ta.value.length, ta.value.length);
