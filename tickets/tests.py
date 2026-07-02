@@ -1929,3 +1929,60 @@ class PodeEditarFiltroTests(TestCase):
     def test_filtro_false_para_outro(self):
         from tickets.templatetags.ticket_tags import pode_editar
         self.assertFalse(pode_editar(self.interacao, self.outro))
+
+
+class EditarInteracaoViewTests(TestCase):
+    def setUp(self):
+        self.autor = Cliente.objects.create_user(
+            email="a3@teste.com", username="autor3", password="senha12345"
+        )
+        self.outro = Cliente.objects.create_user(
+            email="b3@teste.com", username="outro3", password="senha12345"
+        )
+        self.ticket = Ticket.objects.create(
+            cliente=self.autor, sumario="S", descricao="D", maximo_id="SR9"
+        )
+        self.interacao = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.autor, mensagem="texto original"
+        )
+        self.url = reverse("tickets:editar_interacao", args=[self.interacao.id])
+
+    def _ajax(self, user):
+        self.client.force_login(user)
+        return self.client.post(
+            self.url,
+            data={"mensagem": "texto novo"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+    @patch("tickets.views.MaximoSenderService")
+    def test_autor_edita_com_sucesso(self, mock_maximo):
+        resp = self._ajax(self.autor)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "success")
+        self.interacao.refresh_from_db()
+        self.assertEqual(self.interacao.mensagem, "texto novo")
+        self.assertIsNotNone(self.interacao.editado_em)
+        mock_maximo.enviar_interacao.assert_not_called()
+
+    def test_nao_autor_recebe_403(self):
+        resp = self._ajax(self.outro)
+        self.assertEqual(resp.status_code, 403)
+        self.interacao.refresh_from_db()
+        self.assertEqual(self.interacao.mensagem, "texto original")
+
+    def test_fora_da_janela_recebe_403(self):
+        self.interacao.data_criacao = timezone.now() - timedelta(hours=25)
+        self.interacao.save(update_fields=["data_criacao"])
+        resp = self._ajax(self.autor)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_mensagem_vazia_recebe_400(self):
+        self.client.force_login(self.autor)
+        resp = self.client.post(
+            self.url,
+            data={"mensagem": "   "},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("mensagem", resp.json()["errors"])
