@@ -344,7 +344,10 @@
                         texto.classList.remove("d-none");
                     }
                     const ta = box ? box.querySelector(".js-edit-textarea") : null;
-                    if (ta) ta.classList.remove("is-invalid");
+                    if (ta) {
+                        ta.classList.remove("is-invalid");
+                        ta.value = ta.defaultValue;
+                    }
                     if (err) err.textContent = "";
                     return;
                 }
