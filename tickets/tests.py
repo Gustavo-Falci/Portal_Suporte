@@ -1880,3 +1880,109 @@ class DetalheSolicitadoPorTests(TestCase):
         response = self._get_detalhe()
         self.assertContains(response, "Solicitado por")
         self.assertContains(response, "dono.solicitante")
+
+
+class InteracaoEdicaoModelTests(TestCase):
+    def setUp(self):
+        self.autor = Cliente.objects.create(email="a@teste.com", username="autor")
+        self.outro = Cliente.objects.create(email="b@teste.com", username="outro")
+        self.ticket = Ticket.objects.create(
+            cliente=self.autor, sumario="S", descricao="D", maximo_id="SR1"
+        )
+        self.interacao = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.autor, mensagem="original"
+        )
+
+    def test_foi_editado_falso_por_padrao(self):
+        self.assertFalse(self.interacao.foi_editado)
+
+    def test_foi_editado_verdadeiro_apos_marcar(self):
+        self.interacao.editado_em = timezone.now()
+        self.assertTrue(self.interacao.foi_editado)
+
+    def test_pode_editar_autor_dentro_da_janela(self):
+        self.assertTrue(self.interacao.pode_editar(self.autor))
+
+    def test_nao_pode_editar_outro_usuario(self):
+        self.assertFalse(self.interacao.pode_editar(self.outro))
+
+    def test_nao_pode_editar_fora_da_janela(self):
+        self.interacao.data_criacao = timezone.now() - timedelta(hours=25)
+        self.interacao.save(update_fields=["data_criacao"])
+        self.interacao.refresh_from_db()
+        self.assertFalse(self.interacao.pode_editar(self.autor))
+
+
+class PodeEditarFiltroTests(TestCase):
+    def setUp(self):
+        self.autor = Cliente.objects.create(email="a2@teste.com", username="autor2")
+        self.outro = Cliente.objects.create(email="b2@teste.com", username="outro2")
+        self.ticket = Ticket.objects.create(cliente=self.autor, sumario="S", descricao="D")
+        self.interacao = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.autor, mensagem="x"
+        )
+
+    def test_filtro_true_para_autor(self):
+        from tickets.templatetags.ticket_tags import pode_editar
+        self.assertTrue(pode_editar(self.interacao, self.autor))
+
+    def test_filtro_false_para_outro(self):
+        from tickets.templatetags.ticket_tags import pode_editar
+        self.assertFalse(pode_editar(self.interacao, self.outro))
+
+
+class EditarInteracaoViewTests(TestCase):
+    def setUp(self):
+        self.autor = Cliente.objects.create_user(
+            email="a3@teste.com", username="autor3", password="senha12345"
+        )
+        self.outro = Cliente.objects.create_user(
+            email="b3@teste.com", username="outro3", password="senha12345"
+        )
+        self.ticket = Ticket.objects.create(
+            cliente=self.autor, sumario="S", descricao="D", maximo_id="SR9"
+        )
+        self.interacao = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.autor, mensagem="texto original"
+        )
+        self.url = reverse("tickets:editar_interacao", args=[self.interacao.id])
+
+    def _ajax(self, user):
+        self.client.force_login(user)
+        return self.client.post(
+            self.url,
+            data={"mensagem": "texto novo"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+    @patch("tickets.views.MaximoSenderService")
+    def test_autor_edita_com_sucesso(self, mock_maximo):
+        resp = self._ajax(self.autor)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "success")
+        self.interacao.refresh_from_db()
+        self.assertEqual(self.interacao.mensagem, "texto novo")
+        self.assertIsNotNone(self.interacao.editado_em)
+        mock_maximo.enviar_interacao.assert_not_called()
+
+    def test_nao_autor_recebe_403(self):
+        resp = self._ajax(self.outro)
+        self.assertEqual(resp.status_code, 403)
+        self.interacao.refresh_from_db()
+        self.assertEqual(self.interacao.mensagem, "texto original")
+
+    def test_fora_da_janela_recebe_403(self):
+        self.interacao.data_criacao = timezone.now() - timedelta(hours=25)
+        self.interacao.save(update_fields=["data_criacao"])
+        resp = self._ajax(self.autor)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_mensagem_vazia_recebe_400(self):
+        self.client.force_login(self.autor)
+        resp = self.client.post(
+            self.url,
+            data={"mensagem": "   "},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("mensagem", resp.json()["errors"])
