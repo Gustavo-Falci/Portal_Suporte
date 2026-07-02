@@ -348,6 +348,9 @@
                             ta.focus();
                             ta.setSelectionRange(ta.value.length, ta.value.length);
                         }
+                        // Rola para baixo pra revelar os botões Salvar/Cancelar
+                        const salvarBtn = box.querySelector(".js-edit-save");
+                        if (salvarBtn) salvarBtn.scrollIntoView({ behavior: "smooth", block: "nearest" });
                     }
                     return;
                 }
