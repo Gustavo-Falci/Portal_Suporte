@@ -1880,3 +1880,34 @@ class DetalheSolicitadoPorTests(TestCase):
         response = self._get_detalhe()
         self.assertContains(response, "Solicitado por")
         self.assertContains(response, "dono.solicitante")
+
+
+class InteracaoEdicaoModelTests(TestCase):
+    def setUp(self):
+        self.autor = Cliente.objects.create(email="a@teste.com", username="autor")
+        self.outro = Cliente.objects.create(email="b@teste.com", username="outro")
+        self.ticket = Ticket.objects.create(
+            cliente=self.autor, sumario="S", descricao="D", maximo_id="SR1"
+        )
+        self.interacao = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.autor, mensagem="original"
+        )
+
+    def test_foi_editado_falso_por_padrao(self):
+        self.assertFalse(self.interacao.foi_editado)
+
+    def test_foi_editado_verdadeiro_apos_marcar(self):
+        self.interacao.editado_em = timezone.now()
+        self.assertTrue(self.interacao.foi_editado)
+
+    def test_pode_editar_autor_dentro_da_janela(self):
+        self.assertTrue(self.interacao.pode_editar(self.autor))
+
+    def test_nao_pode_editar_outro_usuario(self):
+        self.assertFalse(self.interacao.pode_editar(self.outro))
+
+    def test_nao_pode_editar_fora_da_janela(self):
+        self.interacao.data_criacao = timezone.now() - timedelta(hours=25)
+        self.interacao.save(update_fields=["data_criacao"])
+        self.interacao.refresh_from_db()
+        self.assertFalse(self.interacao.pode_editar(self.autor))
