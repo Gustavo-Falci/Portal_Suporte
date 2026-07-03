@@ -712,11 +712,12 @@ def editar_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
             status=400,
         )
 
-    interacao.mensagem = nova_mensagem
-    interacao.editado_em = timezone.now()
-    interacao.save(update_fields=["mensagem", "editado_em"])
-
-    audit.registrar(request.user, f"editou interação #{interacao.id} do Ticket #{interacao.ticket_id}")
+    # Sem alteração real: não marca como editado, só re-renderiza a bolha atual.
+    if nova_mensagem != interacao.mensagem:
+        interacao.mensagem = nova_mensagem
+        interacao.editado_em = timezone.now()
+        interacao.save(update_fields=["mensagem", "editado_em"])
+        audit.registrar(request.user, f"editou interação #{interacao.id} do Ticket #{interacao.ticket_id}")
 
     html_mensagem = render_to_string(
         "tickets/partials/chat_message.html",
