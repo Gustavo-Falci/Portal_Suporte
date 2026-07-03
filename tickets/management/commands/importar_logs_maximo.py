@@ -53,8 +53,12 @@ class Command(BaseCommand):
 
         # 4. Buscar Tickets Locais
         tickets = Ticket.objects.exclude(maximo_id__isnull=True).exclude(maximo_id='')
-        
+
         total_importado = 0
+
+        # Cache de autores compartilhado pela execução inteira: o mesmo
+        # consultor aparece em vários tickets — resolve o person_id 1x só.
+        user_cache: dict = {}
 
         for ticket in tickets:
             try:
@@ -65,17 +69,17 @@ class Command(BaseCommand):
                     "oslc.select": "ticketid,worklog{recordkey,createby,modifyby,logtype,createdate,description,description_longdescription}",
                     "lean": 1
                 }
-                
+
                 response = http.get(api_url, params=params, timeout=10)
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     members = data.get('member', [])
-                    
+
                     if members:
                         # Pega logs do primeiro item
                         worklogs = members[0].get('worklog', [])
-                        count = self._processar_logs(ticket, worklogs, bot_user)
+                        count = self._processar_logs(ticket, worklogs, bot_user, user_cache)
                         total_importado += count
                         if count > 0:
                             self.stdout.write(f"Ticket #{ticket.maximo_id}: {count} novos logs.")
@@ -121,36 +125,41 @@ class Command(BaseCommand):
         # 5. Limpeza final de espaços extras nas pontas
         return texto.strip()
 
-    def _processar_logs(self, ticket, logs, bot_user) -> int:
+    def _processar_logs(self, ticket, logs, bot_user, user_cache: dict) -> int:
         count = 0
-        # Cache local de usuários para evitar várias idas ao banco de dados no loop
-        user_cache = {}
-        
+
+        # Idempotência em 1 query por ticket: carrega as mensagens existentes
+        # uma vez, em vez de 1 EXISTS por worklog. O set é alimentado a cada
+        # criação para manter a proteção contra duplicatas na MESMA execução.
+        mensagens_existentes = set(
+            TicketInteracao.objects.filter(ticket=ticket).values_list("mensagem", flat=True)
+        )
+
         for log in logs:
-            
+
             tipo = log.get("logtype", "").upper()
             autor_criacao_log = log.get("modifyby", "SUPORTE").upper()
             autor = log.get("createby", "").upper()
 
-            
+
             if tipo != "CLIENTNOTE" or autor_criacao_log == "MXINTADM":
                 continue
 
             # Pega descrição (Longa tem prioridade)
             texto_bruto = log.get("description_longdescription") or log.get("description")
-            
+
             # Chama a função simplificada de limpeza
             msg_final_limpa = self._clean_html(texto_bruto)
-            
+
             if not msg_final_limpa:
                 continue
 
             # Verifica se o 'autor' do Maximo possui vínculo com um usuário do Portal via person_id
             if autor not in user_cache:
                 user_cache[autor] = User.objects.filter(person_id__iexact=autor).first()
-            
+
             usuario_vinculado = user_cache[autor]
-            
+
             if usuario_vinculado:
                 autor_interacao = usuario_vinculado
                 mensagem_formatada = msg_final_limpa
@@ -160,7 +169,7 @@ class Command(BaseCommand):
 
             # Verifica se já existe (Idempotência considerando o formato antigo e o novo)
             mensagem_legada = f"📋 [{autor}]\n\n{msg_final_limpa}"
-            if TicketInteracao.objects.filter(ticket=ticket, mensagem__in=[mensagem_formatada, mensagem_legada]).exists():
+            if mensagem_formatada in mensagens_existentes or mensagem_legada in mensagens_existentes:
                 continue
 
             # Cria a interação
@@ -177,6 +186,7 @@ class Command(BaseCommand):
                 data_log = parse_datetime(data_str)
                 if data_log:
                     TicketInteracao.objects.filter(pk=interacao.pk).update(data_criacao=data_log)
-            
+
+            mensagens_existentes.add(mensagem_formatada)
             count += 1
         return count

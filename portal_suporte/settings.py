@@ -135,10 +135,8 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 
-# Onde estão seus arquivos originais (CSS do Admin e do Site)
-STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'collectstatic'), 
-]
+# Arquivos originais vivem em tickets/static/ (descoberto via APP_DIRS);
+# não há diretório extra de estáticos, então STATICFILES_DIRS não é usado.
 
 # Onde o Django vai "juntar" tudo no deploy (Railway usa essa pasta)
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
