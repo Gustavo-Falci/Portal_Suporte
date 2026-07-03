@@ -43,9 +43,33 @@
     return "";
   }
 
+  function filtroAtual() {
+    return filterBox.value.trim().toLowerCase();
+  }
+
   function matchesFilter(text) {
-    const q = filterBox.value.trim().toLowerCase();
+    const q = filtroAtual();
     return !q || text.toLowerCase().includes(q);
+  }
+
+  // Marca-texto: envolve cada ocorrência do filtro em <mark>, montando os
+  // nós manualmente (nunca innerHTML — linha de log é texto arbitrário).
+  // Com filtro vazio, restaura o texto puro (remove marcas antigas).
+  function aplicarDestaque(div, q) {
+    const texto = div.textContent;
+    if (!q) { div.textContent = texto; return; }
+    const lower = texto.toLowerCase();
+    div.textContent = "";
+    let i = 0;
+    while (true) {
+      const idx = lower.indexOf(q, i);
+      if (idx === -1) { div.appendChild(document.createTextNode(texto.slice(i))); break; }
+      if (idx > i) div.appendChild(document.createTextNode(texto.slice(i, idx)));
+      const mark = document.createElement("mark");
+      mark.textContent = texto.slice(idx, idx + q.length);
+      div.appendChild(mark);
+      i = idx + q.length;
+    }
   }
 
   function criarLinha(text) {
@@ -53,7 +77,9 @@
     div.textContent = text;
     const cls = levelClass(text);
     if (cls) div.className = cls;
-    div.style.display = matchesFilter(text) ? "" : "none";
+    const visivel = matchesFilter(text);
+    div.style.display = visivel ? "" : "none";
+    if (visivel) aplicarDestaque(div, filtroAtual());
     return div;
   }
 
@@ -98,9 +124,13 @@
   });
 
   filterBox.addEventListener("input", function () {
+    const q = filtroAtual();
     container.childNodes.forEach(function (n) {
-      if (n.textContent !== undefined)
-        n.style.display = matchesFilter(n.textContent) ? "" : "none";
+      if (n.textContent !== undefined) {
+        const mostra = matchesFilter(n.textContent);
+        n.style.display = mostra ? "" : "none";
+        if (mostra) aplicarDestaque(n, q);
+      }
     });
   });
 
@@ -130,5 +160,11 @@
 <style nonce="{{ request.csp_nonce }}">
   #log-container .log-error { color: #ff7b72; }
   #log-container .log-warn  { color: #d29922; }
+  #log-container mark {
+    background: #ffd33d;
+    color: #0d1117;
+    padding: 0 1px;
+    border-radius: 2px;
+  }
 </style>
 {% endblock %}
