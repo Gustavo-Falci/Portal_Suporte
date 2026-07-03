@@ -143,8 +143,10 @@ STATICFILES_DIRS = [
 # Onde o Django vai "juntar" tudo no deploy (Railway usa essa pasta)
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# Engine de compressão do Whitenoise (Manifest = nome com hash, evita cache de CSS velho após deploy)
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# Engine de compressão do Whitenoise (Manifest = nome com hash, evita cache de
+# CSS velho após deploy). Django 5.1+ ignora o antigo STATICFILES_STORAGE:
+# a config válida é a chave "staticfiles" do STORAGES (definida mais abaixo).
+_STATICFILES_BACKEND = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Uploads (Anexos)
 MEDIA_URL = '/media/'
@@ -398,7 +400,7 @@ if USE_S3:
             "BACKEND": "tickets.storage.ToleranteS3Storage",
         },
         "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+            "BACKEND": _STATICFILES_BACKEND,
         },
     }
 else:
@@ -408,6 +410,6 @@ else:
             "BACKEND": "django.core.files.storage.FileSystemStorage",
         },
         "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+            "BACKEND": _STATICFILES_BACKEND,
         },
     }

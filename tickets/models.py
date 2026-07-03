@@ -74,6 +74,9 @@ PRIORIDADE_CHOICES = [
     ("5", "5 - Sem Prioridade"),
 ]
 
+# Empresas cujo fluxo de abertura usa o campo "Área" (gate por location).
+EMPRESAS_COM_AREA = ("PAMPA", "ABL")
+
 
 # MODELS
 
@@ -116,6 +119,13 @@ class Cliente(AbstractUser):
     @property
     def is_lider_suporte(self):
         return "lider_suporte" in self._nomes_grupos
+
+    @property
+    def tem_acesso_area(self) -> bool:
+        """True se a empresa (location) do usuário usa o campo Área.
+        Fonte única do gate — usada pelo TicketForm e pelo detalhe do ticket."""
+        loc = (self.location or "").upper()
+        return any(empresa in loc for empresa in EMPRESAS_COM_AREA)
 
 
 class Ambiente(models.Model):

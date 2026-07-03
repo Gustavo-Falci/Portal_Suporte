@@ -200,7 +200,9 @@ class NotificationService:
         <a href="{full_link}">Clique aqui para acessar o portal e ver os detalhes.</a>
         """
 
-        cls._enviar_email_generico([ticket.cliente.email], assunto, corpo)
+        # Sino já foi criado acima; e-mail só se o cliente tiver endereço.
+        if ticket.cliente.email:
+            cls._enviar_email_generico([ticket.cliente.email], assunto, corpo)
 
     @classmethod
     def notificar_nova_interacao(cls, ticket: Ticket, interacao: TicketInteracao):
@@ -216,10 +218,12 @@ class NotificationService:
         try:
 
             # 1. Identificar Destinatários (Set para evitar duplicatas)
+            # Todos os envolvidos entram no set e recebem o SINO; o e-mail é
+            # enviado no loop abaixo apenas para quem tem endereço cadastrado.
             destinatarios = set()
 
             # A. Adiciona o Cliente (Dono do Ticket)
-            if ticket.cliente and ticket.cliente.email:
+            if ticket.cliente:
                 destinatarios.add(ticket.cliente)
 
             # B. Adiciona o Consultor Responsável (Owner)
@@ -228,14 +232,11 @@ class NotificationService:
 
                 # Busca Case-Insensitive pelo person_id
                 consultor = Cliente.objects.filter(person_id__iexact=ticket.owner).first()
-                if consultor and consultor.email:
+                if consultor:
                     destinatarios.add(consultor)
 
             # C. Adiciona o Grupo de Líderes
-            lideres = Cliente.objects.filter(groups__name="lider_suporte")
-            for lider in lideres:
-                if lider.email:
-                    destinatarios.add(lider)
+            destinatarios.update(Cliente.objects.filter(groups__name="lider_suporte"))
 
             # C2. Adiciona os Seguidores designados (consultores extras no ticket)
             for seguidor in ticket.seguidores.all():
@@ -544,7 +545,7 @@ class MaximoSenderService:
                 MaximoSenderService.MAXIMO_API_URL,
                 data=json.dumps(payload),
                 headers=headers,
-                verify=False, # Ignora SSL conforme ambiente de teste
+                verify=getattr(settings, 'MAXIMO_VERIFY_SSL', True),
                 timeout=10
             )
 
@@ -583,7 +584,13 @@ class MaximoSenderService:
         headers = {"apikey": apikey, "Accept": "application/json"}
 
         try:
-            resp = requests.get(base_url, params=params, headers=headers, verify=False, timeout=10)
+            resp = requests.get(
+                base_url,
+                params=params,
+                headers=headers,
+                verify=getattr(settings, 'MAXIMO_VERIFY_SSL', True),
+                timeout=10,
+            )
             if resp.status_code != 200:
                 logger.error(f"Erro ao localizar SR #{maximo_id} ({resp.status_code}): {resp.text}")
                 return None

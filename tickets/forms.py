@@ -224,12 +224,8 @@ class TicketForm(forms.ModelForm):
 
             self.fields["ambiente"].queryset = Ambiente.objects.filter(clientes=user)
 
-            location_str = str(user.location).upper() if getattr(user, "location", None) else ""
-            empresas_com_area = ["PAMPA", "ABL"]
-            
-            tem_acesso_area = any(empresa in location_str for empresa in empresas_com_area)
-
-            if tem_acesso_area:
+            # Gate centralizado no model (Cliente.tem_acesso_area, por location)
+            if user.tem_acesso_area:
                 self.fields["area"].queryset = Area.objects.filter(clientes=user)
                 self.fields["area"].required = False
             else:

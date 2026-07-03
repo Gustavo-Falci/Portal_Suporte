@@ -520,6 +520,12 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
             )
         seguidores_ids = list(ticket.seguidores.values_list("pk", flat=True))
 
+    # Card "Área": mesmo gate do TicketForm (location), não o username.
+    mostra_area = bool(ticket.area) and (
+        getattr(request.user, "is_support_team", False)
+        or request.user.tem_acesso_area
+    )
+
     context = {
         "ticket": ticket,
         "interacoes": interacoes,
@@ -530,6 +536,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
         "consultores_disponiveis": consultores_disponiveis,
         "seguidores_ids": seguidores_ids,
         "proprietario": proprietario,
+        "mostra_area": mostra_area,
     }
     return render(request, "tickets/detalhe_ticket.html", context)
 

@@ -32,7 +32,9 @@ class Command(BaseCommand):
         )
         
         http = requests.Session()
-        http.verify = False       # Desativa verificação SSL na sessão
+        # Verificação SSL controlada pela mesma flag dos demais pontos de
+        # integração (VERIFY no .env -> MAXIMO_VERIFY_SSL).
+        http.verify = getattr(settings, 'MAXIMO_VERIFY_SSL', True)
         http.trust_env = False    # Ignora proxies do sistema (importante para .testing)
         
         http.mount("https://", HTTPAdapter(max_retries=retry_strategy))
