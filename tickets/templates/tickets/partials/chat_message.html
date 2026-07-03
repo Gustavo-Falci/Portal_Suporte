@@ -1,5 +1,7 @@
 {% load ticket_tags %}
-<div class="chat-row {% if interacao.autor == request.user %}chat-me{% else %}chat-other{% endif %}">
+<div class="chat-row {% if interacao.autor == request.user %}chat-me{% else %}chat-other{% endif %}"
+     data-interacao-id="{{ interacao.id }}"
+     data-edit-url="{% url 'tickets:editar_interacao' interacao.id %}">
     
     <div class="chat-avatar shadow-sm
         {% if interacao.is_support %}avatar-support
@@ -32,14 +34,36 @@
                 {% endif %}
                 
             </small>
-            <small class="font-monospace ms-3" style="font-size: 0.7rem; opacity: 0.9;">
-                {{ interacao.data_criacao|date:"d/m/Y H:i" }}
-            </small>
+            <div class="d-flex align-items-center ms-3">
+                <small class="font-monospace" style="font-size: 0.7rem; opacity: 0.9;">
+                    {{ interacao.data_criacao|date:"d/m/Y H:i" }}
+                    {% if interacao.foi_editado %}
+                        <span class="fst-italic" style="opacity: 0.8;">(editado)</span>
+                    {% endif %}
+                </small>
+                {% if interacao|pode_editar:request.user %}
+                    <button type="button"
+                            class="btn btn-sm p-0 border-0 bg-transparent js-edit-btn chat-edit-btn"
+                            title="Editar mensagem" aria-label="Editar mensagem">
+                        <i class="bi bi-pencil" style="font-size: 0.75rem;"></i>
+                    </button>
+                {% endif %}
+            </div>
         </div>
 
         <div class="card-body pt-1 pb-2 px-3">
-            <p class="mb-1 text-dark" style="white-space: pre-wrap; font-size: 0.9rem; line-height: 1.4;">{{ interacao.mensagem|urlize_target_blank }}</p>
-            
+            <p class="mb-1 text-dark js-msg-texto" style="white-space: pre-wrap; font-size: 0.9rem; line-height: 1.4;">{{ interacao.mensagem|urlize_target_blank }}</p>
+
+            <div class="js-edit-box d-none mb-1">
+                <textarea class="form-control form-control-sm js-edit-textarea" rows="3"
+                          style="font-size: 0.9rem;">{{ interacao.mensagem }}</textarea>
+                <div class="invalid-feedback js-edit-error"></div>
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-sm btn-primary js-edit-save">Salvar</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary js-edit-cancel">Cancelar</button>
+                </div>
+            </div>
+
             {% if interacao.anexos.all or interacao.anexo %}
                 <div class="mt-2 pt-2 border-top">
 

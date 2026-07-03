@@ -11,7 +11,7 @@ from .services import MaximoEmailService, NotificationService, MaximoSenderServi
 from django.template.loader import render_to_string
 from django.http import JsonResponse
 from django.core.paginator import Paginator
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import SetPasswordForm
@@ -19,6 +19,7 @@ from .forms import EmailAuthenticationForm
 from django.conf import settings
 from django.http import Http404
 from django.http import StreamingHttpResponse
+from django.utils import timezone
 from . import logtail
 from typing import Any
 import logging
@@ -687,6 +688,42 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
         logger.error(f"Erro inesperado ao servir anexo da interação {interacao_id}: {e}")
         messages.error(request, "Ocorreu um erro interno ao processar o download.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
+
+
+@login_required
+@require_POST
+def editar_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
+    """
+    Edita o texto de uma interação do chat. Só o autor, dentro de 24h.
+    Edição é local: não sincroniza com o Maximo nem dispara notificações.
+    """
+    interacao = get_object_or_404(TicketInteracao, pk=interacao_id)
+
+    if not interacao.pode_editar(request.user):
+        return JsonResponse(
+            {"status": "error", "errors": {"global": "Você não pode editar esta mensagem."}},
+            status=403,
+        )
+
+    nova_mensagem = (request.POST.get("mensagem") or "").strip()
+    if not nova_mensagem:
+        return JsonResponse(
+            {"status": "error", "errors": {"mensagem": ["A mensagem não pode ficar vazia."]}},
+            status=400,
+        )
+
+    # Sem alteração real: não marca como editado, só re-renderiza a bolha atual.
+    if nova_mensagem != interacao.mensagem:
+        interacao.mensagem = nova_mensagem
+        interacao.editado_em = timezone.now()
+        interacao.save(update_fields=["mensagem", "editado_em"])
+        audit.registrar(request.user, f"editou interação #{interacao.id} do Ticket #{interacao.ticket_id}")
+
+    html_mensagem = render_to_string(
+        "tickets/partials/chat_message.html",
+        {"interacao": interacao, "request": request},
+    )
+    return JsonResponse({"status": "success", "html": html_mensagem})
 
 
 @login_required(login_url="/login/")

@@ -327,6 +327,10 @@ class TicketInteracao(models.Model):
 
     data_criacao = models.DateTimeField(auto_now_add=True)
 
+    editado_em = models.DateTimeField(
+        null=True, blank=True, verbose_name="Editado em"
+    )
+
     class Meta:
 
         ordering = ["data_criacao"]
@@ -340,6 +344,17 @@ class TicketInteracao(models.Model):
     @property
     def is_support(self):
         return self.autor.is_support_team or self.autor.is_lider_suporte
+
+    @property
+    def foi_editado(self) -> bool:
+        return self.editado_em is not None
+
+    def pode_editar(self, user) -> bool:
+        from django.utils import timezone
+        from datetime import timedelta
+        if not user or self.autor_id != user.id:
+            return False
+        return (timezone.now() - self.data_criacao) <= timedelta(hours=24)
 
     @property
     def filename(self):

@@ -30,3 +30,15 @@ def is_imagem(value):
     if not value:
         return False
     return value.lower().endswith(_EXT_IMAGEM)
+
+
+@register.filter
+def pode_editar(interacao, user):
+    """
+    True se o usuário pode editar esta interação (autor + dentro da janela de 24h).
+    Usado no chat para exibir o botão de edição só quando cabível.
+    """
+    try:
+        return interacao.pode_editar(user)
+    except AttributeError:
+        return False
