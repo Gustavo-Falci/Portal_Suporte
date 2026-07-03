@@ -106,12 +106,9 @@ class Command(BaseCommand):
     def _clean_html(self, raw_html: str) -> str:
         if not raw_html:
             return ""
-        
-        # 1. Remove comentários específicos do Maximo
-        texto = re.sub(r'', '', raw_html, flags=re.IGNORECASE)
 
-        # 2. Converte tags de quebra de linha visual para quebra de linha de texto (\n)
-        texto = re.sub(r'<(br\s*/?|/p|/div)>', '\n', texto, flags=re.IGNORECASE)
+        # 1. Converte tags de quebra de linha visual para quebra de linha de texto (\n)
+        texto = re.sub(r'<(br\s*/?|/p|/div)>', '\n', raw_html, flags=re.IGNORECASE)
 
         # 3. Remove todas as outras tags HTML
         texto = strip_tags(texto)

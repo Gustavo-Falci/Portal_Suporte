@@ -8,7 +8,6 @@ from django.core.mail import EmailMessage
 from django.conf import settings
 from .models import Ticket, TicketInteracao, Cliente, Notificacao
 from django.urls import reverse
-from django.db.models import Q
 from django.utils.html import strip_tags, escape
 
 logger = logging.getLogger(__name__)
@@ -116,6 +115,16 @@ class MaximoEmailService:
             raise e
 
 
+def _links_ticket(ticket: Ticket) -> tuple[str, str]:
+    """
+    Retorna (link_relativo, link_absoluto) da página de detalhe do ticket.
+    Centraliza o padrão reverse + SITE_URL usado em todas as notificações.
+    """
+    link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
+    base_url = getattr(settings, "SITE_URL", "http://localhost:8000").rstrip("/")
+    return link_relativo, f"{base_url}{link_relativo}"
+
+
 class NotificationService:
 
     """
@@ -157,6 +166,7 @@ class NotificationService:
         """
 
         status_novo = ticket.get_status_maximo_display()
+        link_relativo, full_link = _links_ticket(ticket)
 
         # 1. Notificação Interna (Sino)
         Notificacao.objects.create(
@@ -165,14 +175,11 @@ class NotificationService:
             titulo="Status Atualizado",
             tipo="status",
             mensagem=f"O chamado agora está: {status_novo}",
-            link=reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk}),
+            link=link_relativo,
         )
 
         # 2. Preparar e Envio de E-mail
-        link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
-        base_url = getattr(settings, "SITE_URL", "http://localhost:8000").rstrip("/")
-        full_link = f"{base_url}{link_relativo}"
-        
+
         assunto = f"[Atualização] Ticket #{ticket.maximo_id} mudou para {status_novo}"
 
         # Escapa tudo que deriva de dados do usuário/banco antes de injetar no HTML
@@ -248,14 +255,9 @@ class NotificationService:
             sumario_safe = escape(ticket.sumario)
             ticket_ref_safe = escape(str(ticket.maximo_id or ticket.id))
             mensagem_safe = escape(interacao.mensagem).replace("\n", "<br>")
-            
+
             # Link para o ticket
-            link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
-
-            # Pegamos a URL do settings e removemos qualquer barra no final (rstrip) para evitar //
-            base_url = getattr(settings, "SITE_URL", "http://localhost:8000").rstrip("/") 
-
-            full_link = f"{base_url}{link_relativo}"
+            link_relativo, full_link = _links_ticket(ticket)
 
             notificacoes_db = []
 
@@ -327,9 +329,7 @@ class NotificationService:
             sumario_safe = escape(ticket.sumario)
             descricao_safe = escape(ticket.descricao[:200]).replace("\n", "<br>")
 
-            link_relativo = reverse("tickets:detalhe_ticket", kwargs={"pk": ticket.pk})
-            base_url = getattr(settings, "SITE_URL", "http://localhost:8000").rstrip("/")
-            full_link = f"{base_url}{link_relativo}"
+            link_relativo, full_link = _links_ticket(ticket)
 
             notificacoes_db = []
 
@@ -497,9 +497,10 @@ class MaximoSenderService:
         # Regra: Se for Staff, Support Team, Grupo Consultores OU Grupo Lider Suporte -> WORK
 
         eh_interno = (
-            interacao.autor.is_staff or 
+            interacao.autor.is_staff or
             getattr(interacao.autor, 'is_support_team', False) or
-            interacao.autor.groups.filter(name__in=["Consultores", "lider_suporte"]).exists()
+            interacao.autor.is_consultor or
+            interacao.autor.is_lider_suporte
         )
 
         if eh_interno:

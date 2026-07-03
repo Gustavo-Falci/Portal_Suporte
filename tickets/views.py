@@ -1,6 +1,13 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpRequest, FileResponse
+from django.http import (
+    FileResponse,
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    JsonResponse,
+    StreamingHttpResponse,
+)
 from django.contrib import messages
 from django.urls import reverse
 from .models import Ticket, TicketInteracao, Cliente, Notificacao, MAXIMO_STATUS_CHOICES, TicketAnexo, InteracaoAnexo
@@ -8,8 +15,8 @@ from .forms import TicketForm, TicketInteracaoForm
 from django.db.models import Q, QuerySet
 from django.db import transaction
 from .services import MaximoEmailService, NotificationService, MaximoSenderService
+from .context_processors import dados_notificacoes
 from django.template.loader import render_to_string
-from django.http import JsonResponse
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_http_methods, require_POST
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -17,8 +24,6 @@ from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import SetPasswordForm
 from .forms import EmailAuthenticationForm
 from django.conf import settings
-from django.http import Http404
-from django.http import StreamingHttpResponse
 from django.utils import timezone
 from . import logtail
 from typing import Any
@@ -43,7 +48,7 @@ def _email_eh_gmail(user: Cliente) -> bool:
 def _usuario_tem_acesso_ticket(user: Cliente, ticket: Ticket) -> bool:
     is_dono = (ticket.cliente == user)
     is_staff = getattr(user, 'is_support_team', False) or user.is_superuser
-    is_lider = user.groups.filter(name="lider_suporte").exists()
+    is_lider = user.is_lider_suporte
 
     is_owner_assigned = False
     if user.person_id and ticket.owner:
@@ -381,7 +386,10 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
 @login_required(login_url="/login/")
 def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
 
-    ticket = get_object_or_404(Ticket, pk=pk)
+    ticket = get_object_or_404(
+        Ticket.objects.select_related("cliente", "ambiente", "area").prefetch_related("anexos"),
+        pk=pk,
+    )
     origem = request.GET.get("origin")
 
     # Lógica de bloqueio unificada
@@ -419,17 +427,15 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
                 InteracaoAnexo.objects.create(interacao=interacao, arquivo=arquivo_recebido)
             audit.registrar(request.user, f"adicionou interação ao Ticket #{ticket.id}")
 
-            interacao_salva = TicketInteracao.objects.get(id=interacao.id)
-
             sincronizado = MaximoSenderService.enviar_interacao(ticket, interacao)
-            
+
             if not sincronizado:
                 # Adiciona aviso visual (aparecerá se a página recarregar ou se o JS tratar mensagens)
                 messages.warning(request, "Mensagem salva localmente, mas houve instabilidade na sincronização com o IBM Maximo.")
 
             # ENVIO DE ANEXOS AO MAXIMO (DOCLINKS) EM SEGUNDO PLANO
             # Upload de arquivos pode ser lento; roda em thread para não travar o usuário.
-            anexos_interacao = list(interacao_salva.anexos.all())
+            anexos_interacao = list(interacao.anexos.all())
             if anexos_interacao:
                 threading.Thread(
                     target=MaximoSenderService.enviar_anexos,
@@ -440,12 +446,13 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
             # Isso impede que o usuário fique esperando o SMTP responder
             email_thread = threading.Thread(
                 target=NotificationService.notificar_nova_interacao,
-                args=(ticket, interacao_salva),
+                args=(ticket, interacao),
             )
             email_thread.start()
 
-            # Atualiza data de modificação
-            ticket.save()
+            # Atualiza data de modificação (write direto: dispensa o SELECT do
+            # pre_save e o UPDATE de todas as colunas de um ticket.save())
+            Ticket.objects.filter(pk=ticket.pk).update(data_atualizacao=timezone.now())
 
             # 2. RESPOSTA PARA AJAX (SEM REFRESH)
             # Verifica se a requisição veio do JavaScript
@@ -453,7 +460,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
                 # Renderiza apenas o pedacinho do chat novo
                 html_mensagem = render_to_string(
                     "tickets/partials/chat_message.html",
-                    {"interacao": interacao_salva, "request": request},
+                    {"interacao": interacao, "request": request},
                 )
                 return JsonResponse({"status": "success", "html": html_mensagem})
 
@@ -484,7 +491,14 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
     elif origem == "meus":
         voltar_url = request.session.get('last_meus_tickets_url', reverse("tickets:meus_tickets"))
 
-    interacoes = ticket.interacoes.select_related("autor").all()
+    # prefetch: anexos e grupos dos autores são lidos pelo chat_message.html
+    # para CADA bolha — sem isso o template dispara consultas por mensagem.
+    interacoes = (
+        ticket.interacoes
+        .select_related("autor")
+        .prefetch_related("anexos", "autor__groups")
+        .all()
+    )
 
     # --- Seguidores (consultores extras designados pela liderança) ---
     pode_gerenciar_seguidores = _pode_gerenciar_seguidores(request.user)
@@ -530,11 +544,11 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
     """
     
     # 1. Identificação de Perfil
-    is_consultor = request.user.groups.filter(name="Consultores").exists()
-    
+    is_consultor = request.user.is_consultor
+
     # Verifica se o usuário é do grupo 'lider_suporte'
-    is_lider = request.user.groups.filter(name="lider_suporte").exists()
-    
+    is_lider = request.user.is_lider_suporte
+
     # Verifica se é equipe de suporte (Staff/Admin)
     is_support = getattr(request.user, 'is_support_team', False) or request.user.is_superuser
 
@@ -639,11 +653,46 @@ def fila_atendimento(request: HttpRequest) -> HttpResponse:
         "stats": stats,
         "is_consultor": is_consultor,
         "is_lider": is_lider,
-        "stats": stats,
         "tem_filtros": tem_filtros,
     }
     
     return render(request, "tickets/fila_atendimento.html", context)
+
+def _servir_anexo(request: HttpRequest, ticket: Ticket, arquivo: Any, contexto_log: str) -> HttpResponse:
+    """
+    Serve um FileField de anexo do chat com a lógica compartilhada dos downloads:
+    gera URL assinada (Oracle) ou serve o arquivo físico caso o sistema esteja
+    em fallback local, com tratamento de erros amigável.
+    """
+    try:
+        if getattr(settings, 'USE_S3', False):
+            # O sistema pergunta ao Storage se o arquivo caiu no disco local por falha da nuvem
+            if hasattr(arquivo.storage, 'is_local') and arquivo.storage.is_local(arquivo.name):
+                return FileResponse(
+                    arquivo.open('rb'),
+                    as_attachment=True,
+                    filename=os.path.basename(arquivo.name),
+                )
+            # O arquivo está são e salvo na Oracle Cloud
+            return redirect(arquivo.url)
+
+        # Comportamento padrão 100% offline
+        return FileResponse(
+            arquivo.open('rb'),
+            as_attachment=True,
+            filename=os.path.basename(arquivo.name),
+        )
+
+    except FileNotFoundError:
+        logger.error(f"Arquivo não encontrado no disco: {arquivo.name}")
+        messages.error(request, "Arquivo indisponível, contate o suporte.")
+        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+
+    except Exception as e:
+        logger.error(f"Erro inesperado ao servir {contexto_log}: {e}")
+        messages.error(request, "Ocorreu um erro interno ao processar o download.")
+        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+
 
 @login_required(login_url="/login/")
 def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
@@ -661,33 +710,8 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
         messages.warning(request, "Esta interação não possui anexo.")
         return redirect("tickets:detalhe_ticket", pk=ticket.id)
 
-    try:
-        audit.registrar(request.user, f"baixou anexo da interação #{interacao.id} (Ticket #{ticket.id})")
-        if getattr(settings, 'USE_S3', False):
-            # O sistema pergunta ao Storage se o arquivo caiu no disco local por falha da nuvem
-            if hasattr(interacao.anexo.storage, 'is_local') and interacao.anexo.storage.is_local(interacao.anexo.name):
-                arquivo = interacao.anexo.open('rb')
-                filename = os.path.basename(interacao.anexo.name)
-                return FileResponse(arquivo, as_attachment=True, filename=filename)
-            else:
-                # O arquivo está são e salvo na Oracle Cloud
-                url_assinada = interacao.anexo.url
-                return redirect(url_assinada)
-        else:
-            # Comportamento padrão 100% offline
-            arquivo = interacao.anexo.open('rb')
-            filename = os.path.basename(interacao.anexo.name)
-            return FileResponse(arquivo, as_attachment=True, filename=filename)
-
-    except FileNotFoundError:
-        logger.error(f"Arquivo não encontrado no disco: {interacao.anexo.name}")
-        messages.error(request, "Arquivo indisponível, contate o suporte.")
-        return redirect("tickets:detalhe_ticket", pk=ticket.id)
-
-    except Exception as e:
-        logger.error(f"Erro inesperado ao servir anexo da interação {interacao_id}: {e}")
-        messages.error(request, "Ocorreu um erro interno ao processar o download.")
-        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+    audit.registrar(request.user, f"baixou anexo da interação #{interacao.id} (Ticket #{ticket.id})")
+    return _servir_anexo(request, ticket, interacao.anexo, f"anexo da interação {interacao_id}")
 
 
 @login_required
@@ -739,29 +763,8 @@ def download_anexo_multiplo(request: HttpRequest, anexo_id: str) -> HttpResponse
         messages.error(request, "Você não tem permissão para acessar este arquivo.")
         return redirect("tickets:meus_tickets")
 
-    try:
-        audit.registrar(request.user, f"baixou anexo #{anexo.id} da interação #{anexo.interacao_id} (Ticket #{ticket.id})")
-        if getattr(settings, 'USE_S3', False):
-            if hasattr(anexo.arquivo.storage, 'is_local') and anexo.arquivo.storage.is_local(anexo.arquivo.name):
-                arquivo = anexo.arquivo.open('rb')
-                filename = os.path.basename(anexo.arquivo.name)
-                return FileResponse(arquivo, as_attachment=True, filename=filename)
-            else:
-                return redirect(anexo.arquivo.url)
-        else:
-            arquivo = anexo.arquivo.open('rb')
-            filename = os.path.basename(anexo.arquivo.name)
-            return FileResponse(arquivo, as_attachment=True, filename=filename)
-
-    except FileNotFoundError:
-        logger.error(f"Arquivo não encontrado no disco: {anexo.arquivo.name}")
-        messages.error(request, "Arquivo indisponível, contate o suporte.")
-        return redirect("tickets:detalhe_ticket", pk=ticket.id)
-
-    except Exception as e:
-        logger.error(f"Erro inesperado ao servir anexo {anexo_id}: {e}")
-        messages.error(request, "Ocorreu um erro interno ao processar o download.")
-        return redirect("tickets:detalhe_ticket", pk=ticket.id)
+    audit.registrar(request.user, f"baixou anexo #{anexo.id} da interação #{anexo.interacao_id} (Ticket #{ticket.id})")
+    return _servir_anexo(request, ticket, anexo.arquivo, f"anexo {anexo_id}")
 
 
 @login_required
@@ -806,7 +809,7 @@ def _pode_gerenciar_seguidores(user: Cliente) -> bool:
     return bool(
         getattr(user, "is_support_team", False)
         or user.is_superuser
-        or user.groups.filter(name="lider_suporte").exists()
+        or user.is_lider_suporte
     )
 
 
@@ -854,16 +857,14 @@ def notificacoes_badge(request: HttpRequest) -> JsonResponse:
     """Endpoint leve p/ polling AJAX do sino: retorna a contagem de
     notificações não-lidas + o HTML da lista do dropdown, para o JS
     atualizar número e conteúdo sem recarregar a página."""
-    qs_nao_lidas = Notificacao.objects.filter(destinatario=request.user, lida=False)
-    count = qs_nao_lidas.count()
-    ultimas = qs_nao_lidas.order_by("-data_criacao")[:5]
+    dados = dados_notificacoes(request.user)
 
     html = render_to_string(
         "tickets/partials/notificacoes_lista.html",
-        {"notificacoes_list": ultimas, "notificacoes_count": count},
+        dados,
         request=request,
     )
-    return JsonResponse({"count": count, "html": html})
+    return JsonResponse({"count": dados["notificacoes_count"], "html": html})
 
 
 def _get_next_url(request: HttpRequest) -> str | None:

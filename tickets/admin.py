@@ -135,12 +135,15 @@ class AmbienteAdmin(admin.ModelAdmin):
     search_fields = ("nome_ambiente", "numero_ativo", "clientes__username")
 
     # ManyToMany funciona melhor com filter_horizontal ou autocomplete_fields
-    autocomplete_fields = ["clientes"] 
+    autocomplete_fields = ["clientes"]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("clientes")
 
     # Função para listar os nomes na tabela do admin
     def get_clientes_vinculados(self, obj):
         return ", ".join([c.username for c in obj.clientes.all()])
-    
+
     get_clientes_vinculados.short_description = "Clientes Vinculados"
 
 
@@ -191,3 +194,4 @@ class NotificacaoAdmin(admin.ModelAdmin):
     list_display = ("destinatario", "titulo", "lida", "data_criacao")
     list_filter = ("lida", "tipo")
     search_fields = ("destinatario__username", "mensagem")
+    list_select_related = ("destinatario",)

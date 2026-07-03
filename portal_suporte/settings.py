@@ -198,8 +198,7 @@ EMAIL_USE_SSL = True
 # Pega do .env
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')   
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
-EMAIL_DESTINATION = ('suportebr@itconsol.com')
-SUPPORT_EMAIL_ADDRESS = ('suportebr@itconsol.com')
+EMAIL_DESTINATION = 'suportebr@itconsol.com'
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 
@@ -220,7 +219,6 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    SECURE_BROWSER_XSS_FILTER = True
 
 # CONTENT-SECURITY-POLICY (django-csp)
 # Fontes externas mapeadas do inventário dos templates: Bootstrap (jsdelivr),

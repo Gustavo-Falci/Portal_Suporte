@@ -1,6 +1,6 @@
 import logging
 
-from django.db.models.signals import pre_save, post_save
+from django.db.models.signals import pre_save
 from django.contrib.auth.signals import (
     user_logged_in,
     user_logged_out,
@@ -62,18 +62,3 @@ def monitorar_mudancas_ticket(sender, instance: Ticket, **kwargs):
 
         except Exception as e:
             logger.error(f"Erro notificação status (Ticket {instance.id}): {e}")
-
-
-def post_save_interacao(sender, instance, created, **kwargs):
-
-    """
-    Disparado após salvar uma mensagem no chat.
-    """
-
-    if created:
-
-        try:
-            NotificationService.notificar_nova_interacao(instance.ticket, instance)
-            
-        except Exception as e:
-            logger.error(f"Erro notificação interação (ID {instance.id}): {e}")

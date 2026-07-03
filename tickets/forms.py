@@ -3,7 +3,7 @@ import mimetypes
 from typing import Any
 
 from django import forms
-from django.contrib.auth.forms import AuthenticationForm, SetPasswordForm
+from django.contrib.auth.forms import AuthenticationForm
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from django.conf import settings
@@ -180,22 +180,6 @@ class EmailAuthenticationForm(AuthenticationForm):
     }
 
 
-class NovaSenhaForm(SetPasswordForm):
-
-    """
-    Formulário de Troca de Senha Obrigatória no Primeiro Acesso.
-    Herda as validações nativas do Django (AUTH_PASSWORD_VALIDATORS).
-    """
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        # Remove os textos de ajuda nativos gigantes do Django 
-        # para usarmos a nossa validação visual do frontend limpa.
-        for field in self.fields.values():
-            field.help_text = ''
-            field.widget.attrs.update({'class': 'form-control'})
-
-
 # 2. FORMULÁRIO DE ABERTURA DE TICKET
 
 class TicketForm(forms.ModelForm):
@@ -275,14 +259,6 @@ class TicketForm(forms.ModelForm):
             _validar_anexo_comum(f)
 
         return arquivos
-
-    def save(self, commit: bool = True) -> Any:
-
-        ticket = super().save(commit=False)
-
-        if commit:
-            ticket.save()
-        return ticket
 
 
 # 3. FORMULÁRIO DE INTERAÇÃO (RESPOSTAS)

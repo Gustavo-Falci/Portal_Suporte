@@ -1,16 +1,8 @@
-import os
-import django
-import sys
 import requests
 import logging
 from requests.adapters import HTTPAdapter, Retry
 from datetime import datetime, timedelta
 from django.utils import timezone
-
-# 1. Setup do Ambiente (Caso rode via Crontab/Script direto)
-sys.path.append('/home/ubuntu/portal_suporte/tickets/management/commands/sincronizar_maximo.py')
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'portal_suporte.settings')
-django.setup()
 
 from django.core.management.base import BaseCommand
 from django.conf import settings

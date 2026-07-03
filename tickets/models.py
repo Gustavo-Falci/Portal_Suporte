@@ -1,5 +1,7 @@
 import os
 import uuid
+from datetime import timedelta
+from functools import cached_property
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
@@ -96,17 +98,24 @@ class Cliente(AbstractUser):
     class Meta:
         db_table = "clientes"
 
+    @cached_property
+    def _nomes_grupos(self) -> set:
+        """Nomes dos grupos do usuário, cacheados por instância (1 query por
+        request em vez de 1 por acesso a is_consultor/is_lider_suporte).
+        Usa groups.all() para aproveitar prefetch_related quando existir."""
+        return {g.name for g in self.groups.all()}
+
     @property
     def is_consultor(self):
-        return self.groups.filter(name="Consultores").exists()
+        return "Consultores" in self._nomes_grupos
 
     @property
     def is_support_team(self):
         return self.is_staff
-    
+
     @property
     def is_lider_suporte(self):
-        return self.groups.filter(name="lider_suporte").exists()
+        return "lider_suporte" in self._nomes_grupos
 
 
 class Ambiente(models.Model):
@@ -350,8 +359,6 @@ class TicketInteracao(models.Model):
         return self.editado_em is not None
 
     def pode_editar(self, user) -> bool:
-        from django.utils import timezone
-        from datetime import timedelta
         if not user or self.autor_id != user.id:
             return False
         return (timezone.now() - self.data_criacao) <= timedelta(hours=24)
