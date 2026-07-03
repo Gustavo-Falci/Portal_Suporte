@@ -347,12 +347,17 @@
                         if (ta) {
                             ta.style.width = larguraMsg + "px";
                             autoGrow(ta); // ajusta a altura ao tamanho da mensagem
-                            ta.focus();
+                            ta.focus({ preventScroll: true }); // não deixa o foco rolar a página
                             ta.setSelectionRange(ta.value.length, ta.value.length);
                         }
-                        // Rola para baixo pra revelar os botões Salvar/Cancelar
+                        // Rola SÓ o container do chat (não a página) pra revelar Salvar/Cancelar
                         const salvarBtn = box.querySelector(".js-edit-save");
-                        if (salvarBtn) salvarBtn.scrollIntoView({ behavior: "smooth", block: "end" });
+                        if (salvarBtn) {
+                            const contRect = chatContainer.getBoundingClientRect();
+                            const btnRect = salvarBtn.getBoundingClientRect();
+                            const delta = btnRect.bottom - contRect.bottom + 12; // 12px de folga
+                            if (delta > 0) chatContainer.scrollTo({ top: chatContainer.scrollTop + delta, behavior: "smooth" });
+                        }
                     }
                     return;
                 }
