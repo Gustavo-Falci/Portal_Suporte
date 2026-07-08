@@ -225,6 +225,16 @@ class Ticket(models.Model):
         verbose_name="Seguidores (acompanham o ticket)",
     )
 
+    # Colegas da mesma empresa que o SOLICITANTE (ou suporte) escolhe para
+    # receber notificação (sino + e-mail) das interações e mudanças de status.
+    # NÃO concede acesso: colegas já leem o ticket via is_mesma_empresa.
+    colegas_notificados = models.ManyToManyField(
+        Cliente,
+        related_name="tickets_acompanhando_como_colega",
+        blank=True,
+        verbose_name="Colegas notificados (escolhidos pelo solicitante)",
+    )
+
     prioridade = models.CharField(
         max_length=2,
         choices=PRIORIDADE_CHOICES,

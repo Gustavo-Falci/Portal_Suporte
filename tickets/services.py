@@ -168,41 +168,47 @@ class NotificationService:
         status_novo = ticket.get_status_maximo_display()
         link_relativo, full_link = _links_ticket(ticket)
 
-        # 1. Notificação Interna (Sino)
-        Notificacao.objects.create(
-            destinatario=ticket.cliente,
-            ticket=ticket,
-            titulo="Status Atualizado",
-            tipo="status",
-            mensagem=f"O chamado agora está: {status_novo}",
-            link=link_relativo,
-        )
-
-        # 2. Preparar e Envio de E-mail
+        # Destinatários: dono do ticket + colegas notificados (dedupe via set).
+        destinatarios = {ticket.cliente}
+        destinatarios.update(ticket.colegas_notificados.all())
 
         assunto = f"[Atualização] Ticket #{ticket.maximo_id} mudou para {status_novo}"
-
-        # Escapa tudo que deriva de dados do usuário/banco antes de injetar no HTML
-        nome_cliente = escape(ticket.cliente.first_name or ticket.cliente.username)
         status_ant_safe = escape(status_anterior_display)
         status_novo_safe = escape(status_novo)
 
-        corpo = f"""
-        Olá, {nome_cliente}.<br><br>
+        notificacoes_db = []
+        for usuario in destinatarios:
+            # 1. Notificação Interna (Sino)
+            notificacoes_db.append(
+                Notificacao(
+                    destinatario=usuario,
+                    ticket=ticket,
+                    titulo="Status Atualizado",
+                    tipo="status",
+                    mensagem=f"O chamado agora está: {status_novo}",
+                    link=link_relativo,
+                )
+            )
 
-        O status do seu chamado <strong>#{escape(str(ticket.maximo_id))}</strong> foi atualizado.<br><br>
+            # 2. E-mail (apenas para quem tem endereço)
+            nome_dest = escape(usuario.first_name or usuario.username)
+            corpo = f"""
+            Olá, {nome_dest}.<br><br>
 
-        <div style="border: 1px solid #ccc; padding: 15px; background-color: #f4f4f4;">
-            <p><strong>De:</strong> <span style="color: #666;">{status_ant_safe}</span></p>
-            <p><strong>Para:</strong> <span style="color: #0f62fe; font-weight: bold;">{status_novo_safe}</span></p>
-        </div>
-        <br>
-        <a href="{full_link}">Clique aqui para acessar o portal e ver os detalhes.</a>
-        """
+            O status do chamado <strong>#{escape(str(ticket.maximo_id))}</strong> foi atualizado.<br><br>
 
-        # Sino já foi criado acima; e-mail só se o cliente tiver endereço.
-        if ticket.cliente.email:
-            cls._enviar_email_generico([ticket.cliente.email], assunto, corpo)
+            <div style="border: 1px solid #ccc; padding: 15px; background-color: #f4f4f4;">
+                <p><strong>De:</strong> <span style="color: #666;">{status_ant_safe}</span></p>
+                <p><strong>Para:</strong> <span style="color: #0f62fe; font-weight: bold;">{status_novo_safe}</span></p>
+            </div>
+            <br>
+            <a href="{full_link}">Clique aqui para acessar o portal e ver os detalhes.</a>
+            """
+            if usuario.email:
+                cls._enviar_email_generico([usuario.email], assunto, corpo)
+
+        if notificacoes_db:
+            Notificacao.objects.bulk_create(notificacoes_db)
 
     @classmethod
     def notificar_nova_interacao(cls, ticket: Ticket, interacao: TicketInteracao):
@@ -241,6 +247,10 @@ class NotificationService:
             # C2. Adiciona os Seguidores designados (consultores extras no ticket)
             for seguidor in ticket.seguidores.all():
                 destinatarios.add(seguidor)
+
+            # C3. Adiciona os colegas notificados (escolhidos pelo solicitante)
+            for colega in ticket.colegas_notificados.all():
+                destinatarios.add(colega)
 
             # D. Remove o Autor da Mensagem (quem mandou não deve receber notificação)
             if interacao.autor in destinatarios:

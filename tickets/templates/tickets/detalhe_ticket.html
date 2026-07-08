@@ -263,6 +263,41 @@
                 </div>
             </div>
             {% endif %}
+
+            {% if pode_gerenciar_colegas %}
+            <div class="card shadow-sm rounded-0 mt-3">
+                <div class="card-header bg-white fw-bold d-flex align-items-center" style="font-size: 0.9rem;">
+                    <i class="bi bi-bell-fill me-2"></i> Notificar colegas
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-2" style="font-size: 0.8rem;">
+                        Colegas selecionados recebem aviso (sino + e-mail) das novidades deste ticket.
+                    </p>
+                    <form method="post" action="{% url 'tickets:gerenciar_colegas' ticket.id %}"
+                          id="form-colegas">
+                        {% csrf_token %}
+                        <div class="border rounded mb-2 p-2" style="max-height: 360px; overflow-y: auto;">
+                            {% for c in colegas_disponiveis %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="colegas"
+                                       value="{{ c.id }}" id="col{{ c.id }}"
+                                       {% if c.id in colegas_notificados_ids %}checked{% endif %}>
+                                <label class="form-check-label" for="col{{ c.id }}" style="font-size: 0.85rem;">
+                                    {{ c.get_full_name|default:c.username }}
+                                </label>
+                            </div>
+                            {% empty %}
+                            <p class="text-muted mb-0" style="font-size: 0.85rem;">Nenhum colega da sua empresa cadastrado.</p>
+                            {% endfor %}
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-primary w-100" id="btn-colegas">
+                            <i class="bi bi-check2 me-1"></i> Salvar Colegas
+                        </button>
+                        <div id="feedback-colegas" class="small text-success mt-2 text-center" style="display: none;"></div>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -459,6 +494,40 @@
                     fbSeg.style.display = "block";
                 })
                 .finally(function() { btnSeg.disabled = false; });
+            });
+        }
+
+        // COLEGAS: salva via AJAX (mesmo padrão dos seguidores)
+        const formCol = document.getElementById("form-colegas");
+        if (formCol) {
+            const btnCol = document.getElementById("btn-colegas");
+            const fbCol = document.getElementById("feedback-colegas");
+            formCol.addEventListener("submit", function(e) {
+                e.preventDefault();
+                btnCol.disabled = true;
+                fbCol.style.display = "none";
+                fetch(formCol.action, {
+                    method: "POST",
+                    headers: { "X-Requested-With": "XMLHttpRequest" },
+                    body: new FormData(formCol),
+                })
+                .then(function(r) { return r.json().then(function(d){ return {ok: r.ok, d: d}; }); })
+                .then(function(res) {
+                    if (res.ok && res.d.status === "success") {
+                        fbCol.className = "small text-success mt-2 text-center";
+                        fbCol.textContent = "Colegas salvos (" + res.d.total + ").";
+                    } else {
+                        fbCol.className = "small text-danger mt-2 text-center";
+                        fbCol.textContent = res.d.message || "Erro ao salvar.";
+                    }
+                    fbCol.style.display = "block";
+                })
+                .catch(function() {
+                    fbCol.className = "small text-danger mt-2 text-center";
+                    fbCol.textContent = "Falha de rede.";
+                    fbCol.style.display = "block";
+                })
+                .finally(function() { btnCol.disabled = false; });
             });
         }
 

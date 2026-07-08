@@ -520,6 +520,16 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
             )
         seguidores_ids = list(ticket.seguidores.values_list("pk", flat=True))
 
+    # --- Colegas notificados (escolhidos pelo solicitante/suporte) ---
+    pode_gerenciar_colegas = _pode_gerenciar_colegas(request.user, ticket)
+    colegas_disponiveis = None
+    colegas_notificados_ids = []
+    if pode_gerenciar_colegas:
+        colegas_disponiveis = _colegas_elegiveis(ticket)
+        colegas_notificados_ids = list(
+            ticket.colegas_notificados.values_list("pk", flat=True)
+        )
+
     # Card "Área": mesmo gate do TicketForm (location), não o username.
     mostra_area = bool(ticket.area) and (
         getattr(request.user, "is_support_team", False)
@@ -537,6 +547,9 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
         "seguidores_ids": seguidores_ids,
         "proprietario": proprietario,
         "mostra_area": mostra_area,
+        "pode_gerenciar_colegas": pode_gerenciar_colegas,
+        "colegas_disponiveis": colegas_disponiveis,
+        "colegas_notificados_ids": colegas_notificados_ids,
     }
     return render(request, "tickets/detalhe_ticket.html", context)
 
@@ -820,6 +833,44 @@ def _pode_gerenciar_seguidores(user: Cliente) -> bool:
     )
 
 
+def _pode_gerenciar_colegas(user: Cliente, ticket: Ticket) -> bool:
+    """Solicitante do ticket, ou suporte/superuser/liderança, gerenciam a
+    lista de colegas notificados."""
+    return bool(
+        ticket.cliente_id == user.id
+        or getattr(user, "is_support_team", False)
+        or user.is_superuser
+        or user.is_lider_suporte
+    )
+
+
+def _colegas_elegiveis(ticket: Ticket) -> QuerySet:
+    """Clientes da mesma empresa do solicitante, aptos a serem notificados.
+
+    Mesma location + mesmo mundo de e-mail (gmail só com gmail). Exclui o
+    próprio solicitante e a equipe interna (staff/consultor/líder).
+    Location vazia => nenhum colega (mesma guarda de _tickets_visiveis_cliente).
+    """
+    dono = ticket.cliente
+    loc = (dono.location or "").strip()
+    if not loc:
+        return Cliente.objects.none()
+
+    qs = (
+        Cliente.objects.filter(location__iexact=loc)
+        .exclude(pk=dono.pk)
+        .exclude(is_staff=True)
+        .exclude(is_superuser=True)
+        .exclude(groups__name__in=["Consultores", "lider_suporte"])
+        .distinct()
+    )
+    if _email_eh_gmail(dono):
+        qs = qs.filter(email__iendswith=GMAIL_SUFFIXO)
+    else:
+        qs = qs.exclude(email__iendswith=GMAIL_SUFFIXO)
+    return qs.order_by("first_name", "username")
+
+
 @login_required(login_url="/login/")
 @require_http_methods(["POST"])
 def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
@@ -856,6 +907,40 @@ def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
         return JsonResponse({"status": "success", "total": total})
 
     messages.success(request, "Seguidores do ticket atualizados.")
+    return redirect("tickets:detalhe_ticket", pk=pk)
+
+
+@login_required(login_url="/login/")
+@require_http_methods(["POST"])
+def gerenciar_colegas(request: HttpRequest, pk: int) -> HttpResponse:
+    """Define os colegas notificados de um ticket (clientes da mesma empresa
+    que passam a receber sino + e-mail). Gerenciável pelo solicitante e por
+    suporte/liderança."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+    if not _pode_gerenciar_colegas(request.user, ticket):
+        if is_ajax:
+            return JsonResponse(
+                {"status": "error", "message": "Sem permissão."}, status=403
+            )
+        messages.error(request, "Você não tem permissão para gerenciar colegas.")
+        return redirect("tickets:detalhe_ticket", pk=pk)
+
+    ids = request.POST.getlist("colegas")
+    # Filtra por elegibilidade server-side: IDs forjados de fora da empresa
+    # (ou de staff/consultor) são descartados.
+    colegas = _colegas_elegiveis(ticket).filter(pk__in=ids)
+    ticket.colegas_notificados.set(colegas)
+
+    total = colegas.count()
+    audit.registrar(
+        request.user,
+        f"atualizou colegas notificados do Ticket #{ticket.id} (total: {total})",
+    )
+
+    if is_ajax:
+        return JsonResponse({"status": "success", "total": total})
     return redirect("tickets:detalhe_ticket", pk=pk)
 
 
