@@ -1986,3 +1986,200 @@ class EditarInteracaoViewTests(TestCase):
         )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("mensagem", resp.json()["errors"])
+
+
+class ColegasNotificadosModelTest(TestCase):
+    def test_ticket_tem_m2m_colegas_notificados(self):
+        dono = Cliente.objects.create_user(
+            username="dono", email="dono@empresa.com", password="x", location="PAMPA"
+        )
+        colega = Cliente.objects.create_user(
+            username="colega", email="colega@empresa.com", password="x", location="PAMPA"
+        )
+        amb = Ambiente.objects.create(nome_ambiente="Prod", numero_ativo="A1")
+        ticket = Ticket.objects.create(
+            cliente=dono, ambiente=amb, sumario="s", descricao="d", prioridade="3"
+        )
+        ticket.colegas_notificados.add(colega)
+        self.assertIn(colega, ticket.colegas_notificados.all())
+        self.assertIn(ticket, colega.tickets_acompanhando_como_colega.all())
+
+
+class ColegasHelpersTest(TestCase):
+    def setUp(self):
+        self.g_cons = Group.objects.create(name="Consultores")
+        self.g_lider = Group.objects.create(name="lider_suporte")
+        self.amb = Ambiente.objects.create(nome_ambiente="Prod", numero_ativo="A1")
+        self.dono = Cliente.objects.create_user(
+            username="dono", email="dono@empresa.com", password="x", location="PAMPA"
+        )
+        self.ticket = Ticket.objects.create(
+            cliente=self.dono, ambiente=self.amb, sumario="s", descricao="d", prioridade="3"
+        )
+        self.colega = Cliente.objects.create_user(
+            username="colega", email="colega@empresa.com", password="x", location="PAMPA"
+        )
+        self.gmail = Cliente.objects.create_user(
+            username="gm", email="alguem@gmail.com", password="x", location="PAMPA"
+        )
+        self.outra = Cliente.objects.create_user(
+            username="outra", email="x@abl.com", password="x", location="ABL"
+        )
+        self.consultor = Cliente.objects.create_user(
+            username="cons", email="c@empresa.com", password="x", location="PAMPA"
+        )
+        self.consultor.groups.add(self.g_cons)
+        self.staff = Cliente.objects.create_user(
+            username="stf", email="s@empresa.com", password="x", location="PAMPA", is_staff=True
+        )
+
+    def test_pode_gerenciar_colegas(self):
+        from tickets.views import _pode_gerenciar_colegas
+        self.assertTrue(_pode_gerenciar_colegas(self.dono, self.ticket))
+        self.assertTrue(_pode_gerenciar_colegas(self.staff, self.ticket))
+        self.assertFalse(_pode_gerenciar_colegas(self.colega, self.ticket))
+
+    def test_colegas_elegiveis_filtra_empresa_e_equipe(self):
+        from tickets.views import _colegas_elegiveis
+        elegiveis = list(_colegas_elegiveis(self.ticket))
+        self.assertIn(self.colega, elegiveis)
+        self.assertNotIn(self.dono, elegiveis)
+        self.assertNotIn(self.gmail, elegiveis)
+        self.assertNotIn(self.outra, elegiveis)
+        self.assertNotIn(self.consultor, elegiveis)
+        self.assertNotIn(self.staff, elegiveis)
+
+    def test_colegas_elegiveis_location_vazia(self):
+        from tickets.views import _colegas_elegiveis
+        self.dono.location = ""
+        self.dono.save()
+        self.assertEqual(list(_colegas_elegiveis(self.ticket)), [])
+
+
+class GerenciarColegasViewTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.amb = Ambiente.objects.create(nome_ambiente="Prod", numero_ativo="A1")
+        self.dono = Cliente.objects.create_user(
+            username="dono", email="dono@empresa.com", password="x", location="PAMPA"
+        )
+        self.colega = Cliente.objects.create_user(
+            username="colega", email="colega@empresa.com", password="x", location="PAMPA"
+        )
+        self.intruso = Cliente.objects.create_user(
+            username="intruso", email="i@abl.com", password="x", location="ABL"
+        )
+        self.ticket = Ticket.objects.create(
+            cliente=self.dono, ambiente=self.amb, sumario="s", descricao="d", prioridade="3"
+        )
+
+    def _url(self):
+        return reverse("tickets:gerenciar_colegas", args=[self.ticket.id])
+
+    def test_dono_salva_colega_valido(self):
+        self.client.force_login(self.dono)
+        resp = self.client.post(
+            self._url(), {"colegas": [self.colega.id]},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["total"], 1)
+        self.assertIn(self.colega, self.ticket.colegas_notificados.all())
+
+    def test_id_de_fora_da_empresa_descartado(self):
+        self.client.force_login(self.dono)
+        resp = self.client.post(
+            self._url(), {"colegas": [self.intruso.id]},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.json()["total"], 0)
+        self.assertNotIn(self.intruso, self.ticket.colegas_notificados.all())
+
+    def test_nao_autorizado_recebe_403(self):
+        self.client.force_login(self.colega)
+        resp = self.client.post(
+            self._url(), {"colegas": [self.colega.id]},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+
+class ColegasNotificacaoTest(TestCase):
+    def setUp(self):
+        self.amb = Ambiente.objects.create(nome_ambiente="Prod", numero_ativo="A1")
+        self.dono = Cliente.objects.create_user(
+            username="dono", email="dono@empresa.com", password="x", location="PAMPA"
+        )
+        self.colega = Cliente.objects.create_user(
+            username="colega", email="colega@empresa.com", password="x", location="PAMPA"
+        )
+        self.ticket = Ticket.objects.create(
+            cliente=self.dono, ambiente=self.amb, sumario="s", descricao="d",
+            prioridade="3", maximo_id="SR123",
+        )
+        self.ticket.colegas_notificados.add(self.colega)
+
+    def test_colega_recebe_sino_e_email_em_nova_interacao(self):
+        interacao = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.dono, mensagem="oi"
+        )
+        NotificationService.notificar_nova_interacao(self.ticket, interacao)
+        self.assertTrue(
+            Notificacao.objects.filter(destinatario=self.colega, tipo="mensagem").exists()
+        )
+        destinatarios_email = [addr for m in mail.outbox for addr in m.to]
+        self.assertIn(self.colega.email, destinatarios_email)
+
+    def test_autor_colega_nao_recebe_a_propria_mensagem(self):
+        interacao = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.colega, mensagem="fui eu"
+        )
+        NotificationService.notificar_nova_interacao(self.ticket, interacao)
+        self.assertFalse(
+            Notificacao.objects.filter(destinatario=self.colega, tipo="mensagem").exists()
+        )
+
+    def test_colega_recebe_em_mudanca_de_status(self):
+        NotificationService.notificar_mudanca_status(self.ticket, "Novo")
+        self.assertTrue(
+            Notificacao.objects.filter(destinatario=self.colega, tipo="status").exists()
+        )
+        self.assertTrue(
+            Notificacao.objects.filter(destinatario=self.dono, tipo="status").exists()
+        )
+        destinatarios_email = [addr for m in mail.outbox for addr in m.to]
+        self.assertIn(self.colega.email, destinatarios_email)
+        self.assertIn(self.dono.email, destinatarios_email)
+
+
+class DetalheColegasContextTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.amb = Ambiente.objects.create(nome_ambiente="Prod", numero_ativo="A1")
+        self.dono = Cliente.objects.create_user(
+            username="dono", email="dono@empresa.com", password="x", location="PAMPA"
+        )
+        self.colega = Cliente.objects.create_user(
+            username="colega", email="colega@empresa.com", password="x", location="PAMPA"
+        )
+        self.ticket = Ticket.objects.create(
+            cliente=self.dono, ambiente=self.amb, sumario="s", descricao="d",
+            prioridade="3", maximo_id="SR9",
+        )
+
+    def test_dono_ve_card_colegas(self):
+        self.client.force_login(self.dono)
+        resp = self.client.get(reverse("tickets:detalhe_ticket", args=[self.ticket.id]))
+        self.assertTrue(resp.context["pode_gerenciar_colegas"])
+        self.assertIn(self.colega, list(resp.context["colegas_disponiveis"]))
+        self.assertContains(resp, "form-colegas")
+
+    def test_colega_comum_nao_ve_card(self):
+        self.client.force_login(self.colega)
+        resp = self.client.get(reverse("tickets:detalhe_ticket", args=[self.ticket.id]))
+        self.assertFalse(resp.context["pode_gerenciar_colegas"])
+        # Nota: "form-colegas" aparece sempre no <script> inline (getElementById),
+        # mesmo quando o card está oculto pelo {% if %}. Por isso a checagem de
+        # ausência do card usa o texto do cabeçalho, que só existe dentro do bloco
+        # condicionado a pode_gerenciar_colegas.
+        self.assertNotContains(resp, "Notificar colegas")

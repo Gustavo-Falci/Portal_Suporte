@@ -23,6 +23,11 @@ urlpatterns = [
         views.gerenciar_seguidores,
         name="gerenciar_seguidores",
     ),
+    path(
+        "ticket/<int:pk>/colegas/",
+        views.gerenciar_colegas,
+        name="gerenciar_colegas",
+    ),
 
     # Área de Suporte
     path("fila-atendimento/", views.fila_atendimento, name="fila_atendimento"),
