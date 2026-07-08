@@ -19,6 +19,7 @@ from .context_processors import dados_notificacoes
 from django.template.loader import render_to_string
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_http_methods, require_POST
+from django_ratelimit.decorators import ratelimit
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import SetPasswordForm
@@ -873,6 +874,7 @@ def _colegas_elegiveis(ticket: Ticket) -> QuerySet:
 
 @login_required(login_url="/login/")
 @require_http_methods(["POST"])
+@ratelimit(key="user", rate="10/m", method="POST", block=False)
 def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
     """Define os seguidores de um ticket (consultores extras que ganham
     acesso de leitura+interação e passam a receber notificações).
@@ -880,6 +882,16 @@ def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
     ticket = get_object_or_404(Ticket, pk=pk)
 
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+    if getattr(request, "limited", False):
+        if is_ajax:
+            return JsonResponse(
+                {"status": "error",
+                 "message": "Muitas requisições. Aguarde um momento."},
+                status=429,
+            )
+        messages.error(request, "Muitas requisições. Aguarde um momento.")
+        return redirect("tickets:detalhe_ticket", pk=pk)
 
     if not _pode_gerenciar_seguidores(request.user):
         if is_ajax:

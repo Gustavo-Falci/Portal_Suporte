@@ -7,6 +7,7 @@ from django.http import Http404
 from django.urls import reverse
 from unittest.mock import patch
 from django.core import mail
+from django.core.cache import cache
 from .models import Ticket, TicketInteracao, Ambiente, Notificacao, Area, Cliente
 from .forms import TicketForm
 from .services import MaximoSenderService, NotificationService
@@ -1115,6 +1116,8 @@ class SeguidoresTests(TestCase):
             owner="P_OWNER", maximo_id="SR-1",
         )
 
+        cache.clear()
+
     # ---------- Acesso ----------
 
     def test_consultor_sem_vinculo_nao_acessa(self):
@@ -1149,6 +1152,24 @@ class SeguidoresTests(TestCase):
         )
         self.assertRedirects(resp, reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk}))
         self.assertIn(self.cons_seg, self.ticket.seguidores.all())
+
+    def test_flood_seguidores_bloqueado_por_ratelimit(self):
+        self.client.force_login(self.lider)
+        url = reverse("tickets:gerenciar_seguidores", kwargs={"pk": self.ticket.pk})
+        # 10 primeiros passam.
+        for _ in range(10):
+            ok = self.client.post(
+                url, {"seguidores": [self.cons_seg.id]},
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            )
+            self.assertEqual(ok.status_code, 200)
+        # 11º no mesmo minuto é bloqueado.
+        resp = self.client.post(
+            url, {"seguidores": [self.cons_seg.id]},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.status_code, 429)
+        self.assertEqual(resp.json()["status"], "error")
 
     def test_lider_define_seguidores_ajax(self):
         self.client.force_login(self.lider)

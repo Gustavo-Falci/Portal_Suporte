@@ -6,6 +6,7 @@ charset-normalizer==3.4.3
 Django==5.2.6
 django-axes==8.3.1
 django-csp==4.0
+django-ratelimit==4.1.0
 django-storages==1.14.6
 idna==3.10
 jmespath==1.1.0
