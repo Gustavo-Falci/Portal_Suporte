@@ -491,7 +491,9 @@
                     fbSeg.textContent = "Falha de rede.";
                     fbSeg.style.display = "block";
                 })
-                .finally(function() { btnSeg.disabled = false; });
+                .finally(function() {
+                    setTimeout(function() { btnSeg.disabled = false; }, 5000);
+                });
             });
         }
 
@@ -525,7 +527,9 @@
                     fbCol.textContent = "Falha de rede.";
                     fbCol.style.display = "block";
                 })
-                .finally(function() { btnCol.disabled = false; });
+                .finally(function() {
+                    setTimeout(function() { btnCol.disabled = false; }, 5000);
+                });
             });
         }
 
