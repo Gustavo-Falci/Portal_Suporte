@@ -2093,6 +2093,7 @@ class GerenciarColegasViewTest(TestCase):
         self.ticket = Ticket.objects.create(
             cliente=self.dono, ambiente=self.amb, sumario="s", descricao="d", prioridade="3"
         )
+        cache.clear()
 
     def _url(self):
         return reverse("tickets:gerenciar_colegas", args=[self.ticket.id])
@@ -2123,6 +2124,21 @@ class GerenciarColegasViewTest(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
         self.assertEqual(resp.status_code, 403)
+
+    def test_flood_colegas_bloqueado_por_ratelimit(self):
+        self.client.force_login(self.dono)
+        for _ in range(10):
+            ok = self.client.post(
+                self._url(), {"colegas": [self.colega.id]},
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            )
+            self.assertEqual(ok.status_code, 200)
+        resp = self.client.post(
+            self._url(), {"colegas": [self.colega.id]},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.status_code, 429)
+        self.assertEqual(resp.json()["status"], "error")
 
 
 class ColegasNotificacaoTest(TestCase):

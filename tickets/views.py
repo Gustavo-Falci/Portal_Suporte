@@ -924,12 +924,23 @@ def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required(login_url="/login/")
 @require_http_methods(["POST"])
+@ratelimit(key="user", rate="10/m", method="POST", block=False)
 def gerenciar_colegas(request: HttpRequest, pk: int) -> HttpResponse:
     """Define os colegas notificados de um ticket (clientes da mesma empresa
     que passam a receber sino + e-mail). Gerenciável pelo solicitante e por
     suporte/liderança."""
     ticket = get_object_or_404(Ticket, pk=pk)
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+    if getattr(request, "limited", False):
+        if is_ajax:
+            return JsonResponse(
+                {"status": "error",
+                 "message": "Muitas requisições. Aguarde um momento."},
+                status=429,
+            )
+        messages.error(request, "Muitas requisições. Aguarde um momento.")
+        return redirect("tickets:detalhe_ticket", pk=pk)
 
     if not _pode_gerenciar_colegas(request.user, ticket):
         if is_ajax:
