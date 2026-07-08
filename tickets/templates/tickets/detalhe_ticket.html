@@ -264,7 +264,7 @@
             </div>
             {% endif %}
 
-            {% if pode_gerenciar_colegas %}
+            {% if pode_gerenciar_colegas and colegas_disponiveis %}
             <div class="card shadow-sm rounded-0 mt-3">
                 <div class="card-header bg-white fw-bold d-flex align-items-center" style="font-size: 0.9rem;">
                     <i class="bi bi-bell-fill me-2"></i> Adicionar seguidores ao chamado
@@ -286,8 +286,6 @@
                                     {{ c.get_full_name|default:c.username }}
                                 </label>
                             </div>
-                            {% empty %}
-                            <p class="text-muted mb-0" style="font-size: 0.85rem;">Nenhum usuário além de você da sua empresa está cadastrado.</p>
                             {% endfor %}
                         </div>
                         <button type="submit" class="btn btn-sm btn-primary w-100" id="btn-colegas">
