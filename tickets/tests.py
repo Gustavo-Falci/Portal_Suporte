@@ -2167,19 +2167,35 @@ class DetalheColegasContextTest(TestCase):
             prioridade="3", maximo_id="SR9",
         )
 
+    # Texto do cabeçalho do card — só existe dentro do bloco {% if %} do card,
+    # ao contrário de "form-colegas" que aparece sempre no <script> inline.
+    HEADER_CARD = "Adicionar seguidores ao chamado"
+
     def test_dono_ve_card_colegas(self):
         self.client.force_login(self.dono)
         resp = self.client.get(reverse("tickets:detalhe_ticket", args=[self.ticket.id]))
         self.assertTrue(resp.context["pode_gerenciar_colegas"])
         self.assertIn(self.colega, list(resp.context["colegas_disponiveis"]))
-        self.assertContains(resp, "form-colegas")
+        self.assertContains(resp, self.HEADER_CARD)
 
     def test_colega_comum_nao_ve_card(self):
         self.client.force_login(self.colega)
         resp = self.client.get(reverse("tickets:detalhe_ticket", args=[self.ticket.id]))
         self.assertFalse(resp.context["pode_gerenciar_colegas"])
-        # Nota: "form-colegas" aparece sempre no <script> inline (getElementById),
-        # mesmo quando o card está oculto pelo {% if %}. Por isso a checagem de
-        # ausência do card usa o texto do cabeçalho, que só existe dentro do bloco
-        # condicionado a pode_gerenciar_colegas.
-        self.assertNotContains(resp, "Notificar colegas")
+        self.assertNotContains(resp, self.HEADER_CARD)
+
+    def test_empresa_com_um_usuario_nao_mostra_card(self):
+        # Empresa com um único usuário: sem colegas elegíveis, o card fica oculto
+        # mesmo para o dono (que tem permissão de gerenciar).
+        solo = Cliente.objects.create_user(
+            username="solo", email="solo@solo.com", password="x", location="SOLO"
+        )
+        ticket = Ticket.objects.create(
+            cliente=solo, ambiente=self.amb, sumario="s", descricao="d",
+            prioridade="3", maximo_id="SR-SOLO",
+        )
+        self.client.force_login(solo)
+        resp = self.client.get(reverse("tickets:detalhe_ticket", args=[ticket.id]))
+        self.assertTrue(resp.context["pode_gerenciar_colegas"])
+        self.assertFalse(resp.context["colegas_disponiveis"])
+        self.assertNotContains(resp, self.HEADER_CARD)
