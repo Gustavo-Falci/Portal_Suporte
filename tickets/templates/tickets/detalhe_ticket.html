@@ -267,11 +267,11 @@
             {% if pode_gerenciar_colegas %}
             <div class="card shadow-sm rounded-0 mt-3">
                 <div class="card-header bg-white fw-bold d-flex align-items-center" style="font-size: 0.9rem;">
-                    <i class="bi bi-bell-fill me-2"></i> Notificar colegas
+                    <i class="bi bi-bell-fill me-2"></i> Adicionar seguidores ao chamado
                 </div>
                 <div class="card-body">
                     <p class="text-muted mb-2" style="font-size: 0.8rem;">
-                        Colegas selecionados recebem notificações das novidades deste ticket.
+                        Seguidores selecionados recebem notificações das novidades deste ticket.
                     </p>
                     <form method="post" action="{% url 'tickets:gerenciar_colegas' ticket.id %}"
                           id="form-colegas">
@@ -287,11 +287,11 @@
                                 </label>
                             </div>
                             {% empty %}
-                            <p class="text-muted mb-0" style="font-size: 0.85rem;">Nenhum colega da sua empresa cadastrado.</p>
+                            <p class="text-muted mb-0" style="font-size: 0.85rem;">Nenhum usuário além de você da sua empresa está cadastrado.</p>
                             {% endfor %}
                         </div>
                         <button type="submit" class="btn btn-sm btn-primary w-100" id="btn-colegas">
-                            <i class="bi bi-check2 me-1"></i> Salvar Colegas
+                            <i class="bi bi-check2 me-1"></i> Salvar Seguidores
                         </button>
                         <div id="feedback-colegas" class="small text-success mt-2 text-center" style="display: none;"></div>
                     </form>
