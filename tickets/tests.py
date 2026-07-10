@@ -2275,3 +2275,50 @@ class ThrottleHelperTests(TestCase):
         req2 = self.factory.post("/x"); req2.user = self.user
         self.assertEqual(view(req1).status_code, 200)
         self.assertEqual(view(req2).status_code, 429)
+
+
+@override_settings(RATELIMIT_ENABLE=True)
+class RateLimitPostTests(TestCase):
+    """Rate limit nos endpoints POST caros: acima do rate -> 429."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="rl@teste.com", username="rl", password="x", location="CORP"
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.client.force_login(self.user)
+        self.ticket = Ticket.objects.create(
+            cliente=self.user, sumario="s", descricao="d", maximo_id="SR-RL"
+        )
+
+    def test_flood_criar_ticket(self):
+        url = reverse("tickets:criar_ticket")
+        for _ in range(5):
+            r = self.client.post(url, {})  # form inválido: barato, sem Maximo
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.post(url, {}).status_code, 429)
+
+    def test_flood_enviar_mensagem(self):
+        url = reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk})
+        for _ in range(20):
+            r = self.client.post(url, {})  # form inválido: barato, sem Maximo
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.post(url, {}).status_code, 429)
+
+    def test_flood_editar_interacao(self):
+        # id inexistente: o throttle conta o POST antes do get_object_or_404 (404).
+        url = reverse("tickets:editar_interacao", args=[999999])
+        for _ in range(20):
+            r = self.client.post(url)
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.post(url).status_code, 429)
+
+    def test_flood_marcar_todas_lidas(self):
+        url = reverse("tickets:marcar_todas_notificacoes_lidas")
+        for _ in range(20):
+            r = self.client.post(url)
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.post(url).status_code, 429)
