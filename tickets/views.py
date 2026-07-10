@@ -21,6 +21,7 @@ from django.core.paginator import Paginator
 from django.views.decorators.http import require_http_methods, require_POST
 from .throttle import (
     throttle, RATE_GERENCIAR, RATE_CRIAR, RATE_MSG, RATE_EDITAR, RATE_NOTIF_TODAS,
+    RATE_DOWNLOAD, RATE_FILTRO,
 )
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib.auth import login as auth_login, update_session_auth_hash
@@ -155,6 +156,7 @@ def ticket_sucesso(request: HttpRequest) -> HttpResponse:
 
 # LISTAGEM DE TICKETS
 @login_required(login_url="/login/")
+@throttle(RATE_FILTRO, method="GET")
 def meus_tickets(request: HttpRequest) -> HttpResponse:
 
     """
@@ -560,6 +562,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required(login_url="/login/")
+@throttle(RATE_FILTRO, method="GET")
 def fila_atendimento(request: HttpRequest) -> HttpResponse:
 
     """
@@ -720,6 +723,7 @@ def _servir_anexo(request: HttpRequest, ticket: Ticket, arquivo: Any, contexto_l
 
 
 @login_required(login_url="/login/")
+@throttle(RATE_DOWNLOAD, method="GET")
 def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
     """
     Gera uma URL segura ou serve o arquivo físico caso o sistema esteja em Fallback de erro.
@@ -777,6 +781,7 @@ def editar_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
 
 
 @login_required(login_url="/login/")
+@throttle(RATE_DOWNLOAD, method="GET")
 def download_anexo_multiplo(request: HttpRequest, anexo_id: str) -> HttpResponse:
     """
     Download de um anexo individual de interação (modelo InteracaoAnexo).

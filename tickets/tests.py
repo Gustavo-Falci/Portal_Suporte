@@ -2322,3 +2322,50 @@ class RateLimitPostTests(TestCase):
             r = self.client.post(url)
             self.assertNotEqual(r.status_code, 429)
         self.assertEqual(self.client.post(url).status_code, 429)
+
+
+@override_settings(RATELIMIT_ENABLE=True)
+class RateLimitGetTests(TestCase):
+    """Rate limit nos endpoints GET: downloads (banda) e filtros (carga DB)."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="rlg@teste.com", username="rlg", password="x", location="CORP"
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.client.force_login(self.user)
+
+    def test_flood_download_interacao(self):
+        # id inexistente: throttle conta o GET antes do 404.
+        url = reverse("tickets:download_anexo", args=[999999])
+        for _ in range(40):
+            r = self.client.get(url)
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.get(url).status_code, 429)
+
+    def test_flood_download_multiplo(self):
+        url = reverse(
+            "tickets:download_anexo_multiplo",
+            args=["00000000-0000-0000-0000-000000000000"],
+        )
+        for _ in range(40):
+            r = self.client.get(url)
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.get(url).status_code, 429)
+
+    def test_flood_fila_atendimento(self):
+        url = reverse("tickets:fila_atendimento")
+        for _ in range(30):
+            r = self.client.get(url)  # 200 ou redirect; nunca 429 até o teto
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.get(url).status_code, 429)
+
+    def test_flood_meus_tickets(self):
+        url = reverse("tickets:meus_tickets")
+        for _ in range(30):
+            r = self.client.get(url)
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.get(url).status_code, 429)
