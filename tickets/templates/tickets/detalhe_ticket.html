@@ -305,15 +305,28 @@
     <div class="modal-dialog modal-dialog-centered modal-xl">
         <div class="modal-content bg-transparent border-0 shadow-none">
             <div class="modal-header border-0 pb-1">
-                <span id="imgLightboxNome" class="text-white text-truncate me-auto" style="max-width: 80%;"></span>
+                <span id="imgLightboxNome" class="text-white text-truncate me-auto" style="max-width: 70%;"></span>
+                <span id="imgLightboxContador" class="text-white-50 font-monospace me-3 d-none" style="font-size: 0.85rem;"></span>
                 <a id="imgLightboxDownload" href="#" class="btn btn-sm btn-light me-2" download title="Baixar">
                     <i class="bi bi-download"></i>
                 </a>
                 <button type="button" class="btn-close btn-close-white ms-0" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
-            <div class="modal-body text-center p-0" style="max-height: 85vh; overflow: hidden;">
+            <div class="modal-body text-center p-0 position-relative" style="max-height: 85vh; overflow: hidden;">
+                <button type="button" id="imgLightboxPrev"
+                        class="btn btn-light rounded-circle d-none position-absolute top-50 start-0 translate-middle-y ms-2 shadow p-0 d-flex align-items-center justify-content-center"
+                        style="z-index: 5; width: 44px; height: 44px; opacity: 0.97;"
+                        aria-label="Imagem anterior">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
                 <img id="imgLightboxImg" src="" alt="" class="img-fluid rounded"
                      style="max-height: 80vh; cursor: zoom-in; transition: transform 0.08s ease-out;">
+                <button type="button" id="imgLightboxNext"
+                        class="btn btn-light rounded-circle d-none position-absolute top-50 end-0 translate-middle-y me-2 shadow p-0 d-flex align-items-center justify-content-center"
+                        style="z-index: 5; width: 44px; height: 44px; opacity: 0.97;"
+                        aria-label="Próxima imagem">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -334,6 +347,39 @@
     }
     .chat-row:hover .chat-edit-btn { opacity: 0.7; max-width: 1.5rem; margin-left: 0.5rem; }
     .chat-edit-btn:hover { opacity: 1 !important; }
+
+    /* Botão X de remover anexo: só aparece em modo edição da mensagem. */
+    .js-remover-anexo {
+        display: none;
+        border: none;
+        padding: 0;
+        line-height: 1;
+        color: #fff;
+        background: #dc3545;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        font-size: 0.7rem;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        cursor: pointer;
+    }
+    .js-remover-anexo:hover { background: #bb2d3b; }
+    /* Em imagem: X flutua no canto superior direito. Em arquivo: fica inline. */
+    .chat-row.editando .js-anexo-item.position-relative .js-remover-anexo {
+        display: inline-flex;
+        position: absolute;
+        top: -6px;
+        right: -6px;
+    }
+    .chat-row.editando .js-anexo-item.d-inline-flex .js-remover-anexo {
+        display: inline-flex;
+    }
+    /* Anexo marcado para remoção: esmaecido + botão vira "desfazer" (verde). */
+    .js-anexo-item.marcado .js-anexo-thumb { opacity: 0.35; filter: grayscale(1); }
+    .js-anexo-item.marcado .js-remover-anexo { background: #198754; }
+    .js-anexo-item.marcado .js-remover-anexo:hover { background: #157347; }
 </style>
 
 {% block scripts %}
@@ -374,6 +420,7 @@
                         const larguraMsg = texto.offsetWidth;
                         texto.classList.add("d-none");
                         box.classList.remove("d-none");
+                        row.classList.add("editando");   // revela os X de remover anexo
                         const ta = box.querySelector(".js-edit-textarea");
                         if (ta) {
                             ta.style.width = larguraMsg + "px";
@@ -393,6 +440,20 @@
                     return;
                 }
 
+                // Remover anexo: marca/desmarca (efetiva só ao Salvar)
+                const btnRem = e.target.closest(".js-remover-anexo");
+                if (btnRem) {
+                    const item = btnRem.closest(".js-anexo-item");
+                    if (item) {
+                        const marcado = item.classList.toggle("marcado");
+                        btnRem.title = marcado ? "Desfazer remoção" : "Remover anexo";
+                        btnRem.innerHTML = marcado
+                            ? '<i class="bi bi-arrow-counterclockwise"></i>'
+                            : '<i class="bi bi-x-lg"></i>';
+                    }
+                    return;
+                }
+
                 // Cancelar
                 if (e.target.closest(".js-edit-cancel")) {
                     const box = row.querySelector(".js-edit-box");
@@ -408,6 +469,13 @@
                         ta.value = ta.defaultValue;
                     }
                     if (err) err.textContent = "";
+                    row.classList.remove("editando");
+                    // Desfaz marcações de remoção de anexo
+                    row.querySelectorAll(".js-anexo-item.marcado").forEach(function(item) {
+                        item.classList.remove("marcado");
+                        const b = item.querySelector(".js-remover-anexo");
+                        if (b) { b.title = "Remover anexo"; b.innerHTML = '<i class="bi bi-x-lg"></i>'; }
+                    });
                     return;
                 }
 
@@ -426,6 +494,15 @@
 
                     const formData = new FormData();
                     formData.append("mensagem", ta.value);
+
+                    // Anexos marcados para remoção
+                    row.querySelectorAll(".js-anexo-item.marcado").forEach(function(item) {
+                        if (item.dataset.legado === "1") {
+                            formData.append("remover_legado", "1");
+                        } else if (item.dataset.anexoId) {
+                            formData.append("remover_anexos", item.dataset.anexoId);
+                        }
+                    });
 
                     fetch(url, {
                         method: "POST",
@@ -541,6 +618,13 @@
             const lbImg = document.getElementById("imgLightboxImg");
             const lbNome = document.getElementById("imgLightboxNome");
             const lbDownload = document.getElementById("imgLightboxDownload");
+            const lbContador = document.getElementById("imgLightboxContador");
+            const lbPrev = document.getElementById("imgLightboxPrev");
+            const lbNext = document.getElementById("imgLightboxNext");
+
+            // Grupo de imagens da mensagem aberta + índice atual (navegação circular)
+            let grupo = [];
+            let idx = 0;
 
             const ZOOM_MIN = 1, ZOOM_MAX = 4, ZOOM_PASSO = 0.25;
             let escala = 1, tx = 0, ty = 0;          // escala + deslocamento (pan)
@@ -561,16 +645,46 @@
                 cursorImg();
             }
 
-            document.addEventListener("click", function(e) {
-                const link = e.target.closest(".js-chat-imagem");
-                if (!link) return;
-                e.preventDefault();
+            // Mostra a imagem grupo[i], reseta zoom e atualiza contador/setas.
+            function mostrar(i) {
+                if (!grupo.length) return;
+                idx = (i + grupo.length) % grupo.length;   // wrap circular
+                const link = grupo[idx];
                 resetZoom();
                 lbImg.src = link.dataset.imgSrc;
                 lbNome.textContent = link.dataset.imgName || "";
                 lbImg.alt = link.dataset.imgName || "";
                 lbDownload.href = link.getAttribute("href");
+
+                const varias = grupo.length > 1;
+                lbContador.classList.toggle("d-none", !varias);
+                lbPrev.classList.toggle("d-none", !varias);
+                lbNext.classList.toggle("d-none", !varias);
+                if (varias) {
+                    lbContador.textContent = (idx + 1) + " / " + grupo.length;
+                }
+            }
+
+            document.addEventListener("click", function(e) {
+                const link = e.target.closest(".js-chat-imagem");
+                if (!link) return;
+                e.preventDefault();
+                // Todas as imagens da mesma mensagem (mesma bolha do chat)
+                const bolha = link.closest(".chat-bubble") || document;
+                grupo = Array.from(bolha.querySelectorAll(".js-chat-imagem"));
+                const i = grupo.indexOf(link);
+                mostrar(i < 0 ? 0 : i);
                 lbModal.show();
+            });
+
+            lbPrev.addEventListener("click", function() { mostrar(idx - 1); });
+            lbNext.addEventListener("click", function() { mostrar(idx + 1); });
+
+            // Setas do teclado navegam enquanto o modal está aberto
+            document.addEventListener("keydown", function(e) {
+                if (!lightboxEl.classList.contains("show") || grupo.length < 2) return;
+                if (e.key === "ArrowLeft")  { e.preventDefault(); mostrar(idx - 1); }
+                if (e.key === "ArrowRight") { e.preventDefault(); mostrar(idx + 1); }
             });
 
             // Scroll do mouse na imagem: zoom suave e incremental, centrado no cursor.
@@ -622,6 +736,8 @@
             // Libera memória e zera zoom ao fechar
             lightboxEl.addEventListener("hidden.bs.modal", function() {
                 lbImg.src = "";
+                grupo = [];
+                idx = 0;
                 resetZoom();
             });
         }

@@ -425,6 +425,14 @@ class InteracaoAnexo(models.Model):
     arquivo = models.FileField(upload_to=interacao_anexo_upload_path)
     data_envio = models.DateTimeField(auto_now_add=True)
 
+    # Identificador do doclink correspondente no Maximo (href ou docinfoid), capturado
+    # no upload. Permite remoção exata do anexo nos DOCLINKS. Null em anexos antigos
+    # (anteriores a esta feature) -> remoção cai no fallback por filename.
+    maximo_doclink_id = models.CharField(
+        max_length=500, null=True, blank=True,
+        verbose_name="ID do doclink no Maximo",
+    )
+
     class Meta:
         ordering = ["data_envio"]
 

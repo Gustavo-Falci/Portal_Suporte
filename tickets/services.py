@@ -622,11 +622,12 @@ class MaximoSenderService:
             return None
 
     @staticmethod
-    def _post_doclink(doclinks_url: str, arquivo, apikey: str) -> bool:
+    def _doclink_request(doclinks_url: str, arquivo, apikey: str):
 
         """
-        Envia UM arquivo (FieldFile/UploadedFile) para a URL de doclinks de uma SR.
-        Lê os bytes raw e POSTa com os headers de metadado do Maximo.
+        POST de UM arquivo (FieldFile/UploadedFile) para a URL de doclinks de uma SR.
+        Retorna a Response do requests (ou None em exceção). Não interpreta status:
+        o chamador decide sucesso e, se quiser, extrai o id do doclink criado.
         """
 
         try:
@@ -644,7 +645,7 @@ class MaximoSenderService:
                 "apikey": apikey,
             }
 
-            resp = requests.post(
+            return requests.post(
                 doclinks_url,
                 data=conteudo,
                 headers=headers,
@@ -652,20 +653,176 @@ class MaximoSenderService:
                 timeout=30,
             )
 
-            if resp.status_code in (200, 201, 204):
-                logger.info(f"Anexo '{nome}' enviado para {doclinks_url}")
-                return True
-
-            logger.error(f"Erro DOCLINKS '{nome}' ({resp.status_code}): {resp.text}")
-            return False
-
         except Exception as e:
             logger.error(f"Exceção ao enviar anexo '{getattr(arquivo, 'name', '?')}': {e}")
-            return False
+            return None
 
         finally:
             if hasattr(arquivo, 'closed') and not arquivo.closed:
                 arquivo.close()
+
+    @classmethod
+    def _post_doclink(cls, doclinks_url: str, arquivo, apikey: str) -> bool:
+
+        """Envia UM arquivo para os doclinks e retorna apenas sucesso/falha."""
+
+        resp = cls._doclink_request(doclinks_url, arquivo, apikey)
+        nome = os.path.basename(getattr(arquivo, 'name', '?'))
+        if resp is not None and resp.status_code in (200, 201, 204):
+            logger.info(f"Anexo '{nome}' enviado para {doclinks_url}")
+            return True
+        if resp is not None:
+            logger.error(f"Erro DOCLINKS '{nome}' ({resp.status_code}): {resp.text}")
+        return False
+
+    @staticmethod
+    def _extrair_doclink_id(resp) -> "str | None":
+
+        """
+        Descobre o identificador do doclink recém-criado a partir da resposta do POST.
+        Ordem: header Location -> href/docinfoid/identifier no corpo JSON.
+        Loga o que encontrou para validação no ambiente de dev.
+        """
+
+        try:
+            loc = resp.headers.get("Location")
+        except Exception:
+            loc = None
+        if loc:
+            logger.info(f"DOCLINK criado, Location={loc}")
+            return str(loc)
+
+        try:
+            data = resp.json()
+            if isinstance(data, dict):
+                cand = data.get("href") or data.get("docinfoid") or data.get("identifier")
+                if cand:
+                    logger.info(f"DOCLINK criado, id do corpo={cand}")
+                    return str(cand)
+        except Exception:
+            pass
+
+        logger.warning("DOCLINK criado sem id identificável na resposta; remoção usará fallback por filename.")
+        return None
+
+    @staticmethod
+    def _delete_doclink(url: str, apikey: str, filename: str = "?") -> bool:
+
+        """
+        DELETE de UM doclink pela sua URL. Se o gateway bloquear DELETE, tenta
+        POST com x-method-override: DELETE (mesmo padrão do SYNC). Best-effort.
+        """
+
+        headers = {"apikey": apikey, "Accept": "application/json"}
+        verify = getattr(settings, 'MAXIMO_VERIFY_SSL', True)
+        try:
+            resp = requests.delete(url, headers=headers, verify=verify, timeout=15)
+            if resp.status_code in (200, 204):
+                logger.info(f"DOCLINK '{filename}' removido no Maximo ({url}).")
+                return True
+
+            logger.warning(
+                f"DELETE doclink '{filename}' status {resp.status_code}; tentando x-method-override."
+            )
+            resp2 = requests.post(
+                url,
+                headers={**headers, "x-method-override": "DELETE"},
+                verify=verify,
+                timeout=15,
+            )
+            if resp2.status_code in (200, 204):
+                logger.info(f"DOCLINK '{filename}' removido via override ({url}).")
+                return True
+
+            logger.error(f"Falha ao remover DOCLINK '{filename}' ({resp2.status_code}): {resp2.text}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Exceção ao remover DOCLINK '{filename}': {e}")
+            return False
+
+    @classmethod
+    def _achar_doclink_por_nome(cls, member_href: str, apikey: str, filename: str) -> "str | None":
+
+        """
+        Fallback (estratégia A): GET na coleção /doclinks da SR e localiza o member
+        cujo nome de arquivo bate com `filename`. Retorna o href do member ou None.
+        """
+
+        alvo = os.path.basename(filename or "")
+        if not alvo:
+            return None
+
+        url = f"{member_href}/doclinks"
+        headers = {"apikey": apikey, "Accept": "application/json"}
+        params = {"oslc.select": "*", "lean": 1}
+        try:
+            resp = requests.get(
+                url, params=params, headers=headers,
+                verify=getattr(settings, 'MAXIMO_VERIFY_SSL', True), timeout=15,
+            )
+            if resp.status_code != 200:
+                logger.error(f"GET doclinks {url} status {resp.status_code}: {resp.text}")
+                return None
+
+            data = resp.json()
+            membros = data.get("member") or data.get("rdfs:member") or []
+            for m in membros:
+                # O nome do arquivo pode vir em urlname/fileName/document conforme o Maximo.
+                nome = m.get("urlname") or m.get("fileName") or m.get("document") or ""
+                if os.path.basename(str(nome)) == alvo:
+                    href = m.get("href") or m.get("rdf:about")
+                    if href and not str(href).startswith("http"):
+                        p = urlparse(url)
+                        href = f"{p.scheme}://{p.netloc}/{str(href).lstrip('/')}"
+                    logger.info(f"DOCLINK '{alvo}' localizado por filename: {href}")
+                    return href
+
+            logger.warning(f"Nenhum doclink casou com '{alvo}' entre {len(membros)} membros da SR.")
+            return None
+
+        except Exception as e:
+            logger.error(f"Exceção ao buscar doclink '{alvo}': {e}")
+            return None
+
+    @classmethod
+    def remover_anexo_doclink(cls, maximo_id, doclink_id, filename) -> bool:
+
+        """
+        Remove UM anexo dos DOCLINKS da SR no Maximo.
+        Estratégia B: usa `doclink_id` exato (capturado no upload) quando existe.
+        Fallback A: localiza por filename na coleção de doclinks.
+        Best-effort: nunca levanta exceção; loga tudo para validação em dev.
+        """
+
+        if not maximo_id:
+            logger.warning("remover_anexo_doclink: ticket sem maximo_id; nada a remover no Maximo.")
+            return False
+
+        apikey = getattr(settings, 'MAXIMO_API_KEY', '')
+
+        # Estratégia B: id exato do doclink.
+        if doclink_id:
+            url = str(doclink_id)
+            if not url.startswith("http"):
+                member_href = cls._get_member_href(str(maximo_id), apikey)
+                if not member_href:
+                    return False
+                url = f"{member_href}/doclinks/{doclink_id}"
+            return cls._delete_doclink(url, apikey, filename or "?")
+
+        # Fallback A: acha por filename.
+        member_href = cls._get_member_href(str(maximo_id), apikey)
+        if not member_href:
+            return False
+
+        alvo = cls._achar_doclink_por_nome(member_href, apikey, filename)
+        if not alvo:
+            logger.warning(
+                f"DOCLINK de '{filename}' não localizado na SR {maximo_id}; nada removido no Maximo."
+            )
+            return False
+        return cls._delete_doclink(alvo, apikey, filename or "?")
 
     @classmethod
     def enviar_anexos_criacao(cls, doclinks_url: str, arquivos: list) -> bool:
@@ -713,7 +870,22 @@ class MaximoSenderService:
         sucesso_total = True
 
         for anexo in anexos:
-            if not cls._post_doclink(doclinks_url, anexo.arquivo, apikey):
+            resp = cls._doclink_request(doclinks_url, anexo.arquivo, apikey)
+            nome = os.path.basename(getattr(anexo.arquivo, 'name', '?'))
+
+            if resp is not None and resp.status_code in (200, 201, 204):
+                logger.info(f"Anexo '{nome}' enviado para {doclinks_url}")
+                # Captura o id do doclink p/ permitir remoção exata depois (estratégia B).
+                doclink_id = cls._extrair_doclink_id(resp)
+                if doclink_id and getattr(anexo, 'pk', None):
+                    anexo.maximo_doclink_id = doclink_id
+                    try:
+                        anexo.save(update_fields=["maximo_doclink_id"])
+                    except Exception as e:
+                        logger.error(f"Falha ao salvar doclink_id do anexo {anexo.pk}: {e}")
+            else:
                 sucesso_total = False
+                if resp is not None:
+                    logger.error(f"Erro DOCLINKS '{nome}' ({resp.status_code}): {resp.text}")
 
         return sucesso_total

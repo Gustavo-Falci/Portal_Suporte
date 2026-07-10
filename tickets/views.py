@@ -766,8 +766,39 @@ def editar_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
             status=400,
         )
 
-    # Sem alteração real: não marca como editado, só re-renderiza a bolha atual.
-    if nova_mensagem != interacao.mensagem:
+    # Remoção de anexos marcados no modo edição (portal + DOCLINKS do Maximo).
+    remover_ids = request.POST.getlist("remover_anexos")
+    remover_legado = request.POST.get("remover_legado") == "1"
+    anexos_removidos = False
+    # (doclink_id, filename) de cada anexo removido -> usado p/ apagar no Maximo.
+    doclinks_para_remover: list[tuple[Any, Any]] = []
+
+    if remover_ids:
+        # Filtra pela própria interação: impede remover anexo de outra mensagem.
+        for anexo in interacao.anexos.filter(pk__in=remover_ids):
+            doclinks_para_remover.append((anexo.maximo_doclink_id, anexo.filename))
+            anexo.arquivo.delete(save=False)   # remove do storage (Oracle/local)
+            anexo.delete()
+            anexos_removidos = True
+
+    if remover_legado and interacao.anexo:
+        doclinks_para_remover.append((None, interacao.filename))  # legado não tem id
+        interacao.anexo.delete(save=True)      # limpa o FileField + remove do storage
+        anexos_removidos = True
+
+    # Remove os mesmos anexos dos DOCLINKS da SR no Maximo, em segundo plano.
+    # Best-effort: a remoção no portal já ocorreu; falha aqui só gera log.
+    if doclinks_para_remover and interacao.ticket.maximo_id:
+        maximo_id = interacao.ticket.maximo_id
+
+        def _remover_doclinks() -> None:
+            for doclink_id, filename in doclinks_para_remover:
+                MaximoSenderService.remover_anexo_doclink(maximo_id, doclink_id, filename)
+
+        threading.Thread(target=_remover_doclinks).start()
+
+    texto_alterado = nova_mensagem != interacao.mensagem
+    if texto_alterado or anexos_removidos:
         interacao.mensagem = nova_mensagem
         interacao.editado_em = timezone.now()
         interacao.save(update_fields=["mensagem", "editado_em"])
