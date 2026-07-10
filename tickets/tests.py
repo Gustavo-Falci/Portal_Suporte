@@ -3,7 +3,7 @@ import os
 from django.test import TestCase, Client, SimpleTestCase, RequestFactory, override_settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Group
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.urls import reverse
 from unittest.mock import patch
 from django.core import mail
@@ -1153,6 +1153,7 @@ class SeguidoresTests(TestCase):
         self.assertRedirects(resp, reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk}))
         self.assertIn(self.cons_seg, self.ticket.seguidores.all())
 
+    @override_settings(RATELIMIT_ENABLE=True)
     def test_flood_seguidores_bloqueado_por_ratelimit(self):
         self.client.force_login(self.lider)
         url = reverse("tickets:gerenciar_seguidores", kwargs={"pk": self.ticket.pk})
@@ -2125,6 +2126,7 @@ class GerenciarColegasViewTest(TestCase):
         )
         self.assertEqual(resp.status_code, 403)
 
+    @override_settings(RATELIMIT_ENABLE=True)
     def test_flood_colegas_bloqueado_por_ratelimit(self):
         self.client.force_login(self.dono)
         for _ in range(10):
@@ -2236,3 +2238,40 @@ class DetalheColegasContextTest(TestCase):
         self.assertTrue(resp.context["pode_gerenciar_colegas"])
         self.assertFalse(resp.context["colegas_disponiveis"])
         self.assertNotContains(resp, self.HEADER_CARD)
+
+
+class ThrottleHelperTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.factory = RequestFactory()
+        self.user = Cliente.objects.create_user(
+            email="thr@teste.com", username="thr", password="x"
+        )
+
+    def test_resposta_429_ajax_devolve_json(self):
+        from tickets.throttle import resposta_429
+        req = self.factory.post("/x", HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        resp = resposta_429(req)
+        self.assertEqual(resp.status_code, 429)
+        self.assertEqual(resp["Content-Type"], "application/json")
+
+    def test_resposta_429_navegacao_devolve_texto(self):
+        from tickets.throttle import resposta_429
+        req = self.factory.post("/x")
+        resp = resposta_429(req)
+        self.assertEqual(resp.status_code, 429)
+        self.assertIn("text/plain", resp["Content-Type"])
+        self.assertIn("Muitas requisi", resp.content.decode("utf-8"))
+
+    @override_settings(RATELIMIT_ENABLE=True)
+    def test_throttle_bloqueia_no_estouro(self):
+        from tickets.throttle import throttle
+
+        @throttle("1/m")
+        def view(request):
+            return HttpResponse("ok")
+
+        req1 = self.factory.post("/x"); req1.user = self.user
+        req2 = self.factory.post("/x"); req2.user = self.user
+        self.assertEqual(view(req1).status_code, 200)
+        self.assertEqual(view(req2).status_code, 429)

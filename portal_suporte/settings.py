@@ -69,6 +69,13 @@ MIDDLEWARE = [
     "axes.middleware.AxesMiddleware",
 ]
 
+# django-ratelimit fica DESLIGADO durante os testes para não estourar limites
+# acidentalmente (o contador LocMemCache persiste entre testes no mesmo
+# processo). Os testes de rate limit reativam com @override_settings(RATELIMIT_ENABLE=True).
+import sys
+if "test" in sys.argv:
+    RATELIMIT_ENABLE = False
+
 ROOT_URLCONF = "portal_suporte.urls"
 
 TEMPLATES = [
