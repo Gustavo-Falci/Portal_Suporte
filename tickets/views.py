@@ -19,7 +19,10 @@ from .context_processors import dados_notificacoes
 from django.template.loader import render_to_string
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_http_methods, require_POST
-from django_ratelimit.decorators import ratelimit
+from .throttle import (
+    throttle, RATE_GERENCIAR, RATE_CRIAR, RATE_MSG, RATE_EDITAR, RATE_NOTIF_TODAS,
+    RATE_DOWNLOAD, RATE_FILTRO,
+)
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib.auth import login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import SetPasswordForm
@@ -153,6 +156,7 @@ def ticket_sucesso(request: HttpRequest) -> HttpResponse:
 
 # LISTAGEM DE TICKETS
 @login_required(login_url="/login/")
+@throttle(RATE_FILTRO, method="GET")
 def meus_tickets(request: HttpRequest) -> HttpResponse:
 
     """
@@ -295,6 +299,7 @@ def _integrar_maximo_criacao(request: HttpRequest, ticket: Ticket, todos_anexos:
 
 
 @login_required(login_url="/login/")
+@throttle(RATE_CRIAR)
 def criar_ticket(request: HttpRequest) -> HttpResponse:
 
     if request.method == "POST":
@@ -385,6 +390,7 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
 
 # DETALHE DO TICKET
 @login_required(login_url="/login/")
+@throttle(RATE_MSG)
 def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
 
     ticket = get_object_or_404(
@@ -556,6 +562,7 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required(login_url="/login/")
+@throttle(RATE_FILTRO, method="GET")
 def fila_atendimento(request: HttpRequest) -> HttpResponse:
 
     """
@@ -716,6 +723,7 @@ def _servir_anexo(request: HttpRequest, ticket: Ticket, arquivo: Any, contexto_l
 
 
 @login_required(login_url="/login/")
+@throttle(RATE_DOWNLOAD, method="GET")
 def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
     """
     Gera uma URL segura ou serve o arquivo físico caso o sistema esteja em Fallback de erro.
@@ -737,6 +745,7 @@ def download_anexo_interacao(request: HttpRequest, interacao_id: int) -> HttpRes
 
 @login_required
 @require_POST
+@throttle(RATE_EDITAR)
 def editar_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
     """
     Edita o texto de uma interação do chat. Só o autor, dentro de 24h.
@@ -772,6 +781,7 @@ def editar_interacao(request: HttpRequest, interacao_id: int) -> HttpResponse:
 
 
 @login_required(login_url="/login/")
+@throttle(RATE_DOWNLOAD, method="GET")
 def download_anexo_multiplo(request: HttpRequest, anexo_id: str) -> HttpResponse:
     """
     Download de um anexo individual de interação (modelo InteracaoAnexo).
@@ -818,6 +828,7 @@ def marcar_notificacao_lida(request: Any, notificacao_id: int) -> Any:
 
 @login_required(login_url="/login/")
 @require_http_methods(["POST"])
+@throttle(RATE_NOTIF_TODAS)
 def marcar_todas_notificacoes_lidas(request: HttpRequest) -> HttpResponse:
     """Marca todas as notificações não-lidas do usuário como lidas (bulk)."""
     Notificacao.objects.filter(destinatario=request.user, lida=False).update(lida=True)
@@ -874,7 +885,7 @@ def _colegas_elegiveis(ticket: Ticket) -> QuerySet:
 
 @login_required(login_url="/login/")
 @require_http_methods(["POST"])
-@ratelimit(key="user", rate="10/m", method="POST", block=False)
+@throttle(RATE_GERENCIAR)
 def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
     """Define os seguidores de um ticket (consultores extras que ganham
     acesso de leitura+interação e passam a receber notificações).
@@ -882,16 +893,6 @@ def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
     ticket = get_object_or_404(Ticket, pk=pk)
 
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
-
-    if getattr(request, "limited", False):
-        if is_ajax:
-            return JsonResponse(
-                {"status": "error",
-                 "message": "Muitas requisições. Aguarde um momento."},
-                status=429,
-            )
-        messages.error(request, "Muitas requisições. Aguarde um momento.")
-        return redirect("tickets:detalhe_ticket", pk=pk)
 
     if not _pode_gerenciar_seguidores(request.user):
         if is_ajax:
@@ -924,23 +925,13 @@ def gerenciar_seguidores(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required(login_url="/login/")
 @require_http_methods(["POST"])
-@ratelimit(key="user", rate="10/m", method="POST", block=False)
+@throttle(RATE_GERENCIAR)
 def gerenciar_colegas(request: HttpRequest, pk: int) -> HttpResponse:
     """Define os colegas notificados de um ticket (clientes da mesma empresa
     que passam a receber sino + e-mail). Gerenciável pelo solicitante e por
     suporte/liderança."""
     ticket = get_object_or_404(Ticket, pk=pk)
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
-
-    if getattr(request, "limited", False):
-        if is_ajax:
-            return JsonResponse(
-                {"status": "error",
-                 "message": "Muitas requisições. Aguarde um momento."},
-                status=429,
-            )
-        messages.error(request, "Muitas requisições. Aguarde um momento.")
-        return redirect("tickets:detalhe_ticket", pk=pk)
 
     if not _pode_gerenciar_colegas(request.user, ticket):
         if is_ajax:

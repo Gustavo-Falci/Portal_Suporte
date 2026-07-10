@@ -3,7 +3,7 @@ import os
 from django.test import TestCase, Client, SimpleTestCase, RequestFactory, override_settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Group
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.urls import reverse
 from unittest.mock import patch
 from django.core import mail
@@ -1153,6 +1153,7 @@ class SeguidoresTests(TestCase):
         self.assertRedirects(resp, reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk}))
         self.assertIn(self.cons_seg, self.ticket.seguidores.all())
 
+    @override_settings(RATELIMIT_ENABLE=True)
     def test_flood_seguidores_bloqueado_por_ratelimit(self):
         self.client.force_login(self.lider)
         url = reverse("tickets:gerenciar_seguidores", kwargs={"pk": self.ticket.pk})
@@ -2125,6 +2126,7 @@ class GerenciarColegasViewTest(TestCase):
         )
         self.assertEqual(resp.status_code, 403)
 
+    @override_settings(RATELIMIT_ENABLE=True)
     def test_flood_colegas_bloqueado_por_ratelimit(self):
         self.client.force_login(self.dono)
         for _ in range(10):
@@ -2236,3 +2238,176 @@ class DetalheColegasContextTest(TestCase):
         self.assertTrue(resp.context["pode_gerenciar_colegas"])
         self.assertFalse(resp.context["colegas_disponiveis"])
         self.assertNotContains(resp, self.HEADER_CARD)
+
+
+class ThrottleHelperTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.factory = RequestFactory()
+        self.user = Cliente.objects.create_user(
+            email="thr@teste.com", username="thr", password="x"
+        )
+
+    def test_resposta_429_ajax_devolve_json(self):
+        from tickets.throttle import resposta_429
+        req = self.factory.post("/x", HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        resp = resposta_429(req)
+        self.assertEqual(resp.status_code, 429)
+        self.assertEqual(resp["Content-Type"], "application/json")
+
+    def test_resposta_429_navegacao_devolve_texto(self):
+        from tickets.throttle import resposta_429
+        req = self.factory.post("/x")
+        resp = resposta_429(req)
+        self.assertEqual(resp.status_code, 429)
+        self.assertIn("text/plain", resp["Content-Type"])
+        self.assertIn("Muitas requisi", resp.content.decode("utf-8"))
+
+    @override_settings(RATELIMIT_ENABLE=True)
+    def test_throttle_bloqueia_no_estouro(self):
+        from tickets.throttle import throttle
+
+        @throttle("1/m")
+        def view(request):
+            return HttpResponse("ok")
+
+        req1 = self.factory.post("/x"); req1.user = self.user
+        req2 = self.factory.post("/x"); req2.user = self.user
+        self.assertEqual(view(req1).status_code, 200)
+        self.assertEqual(view(req2).status_code, 429)
+
+
+@override_settings(RATELIMIT_ENABLE=True)
+class RateLimitPostTests(TestCase):
+    """Rate limit nos endpoints POST caros: acima do rate -> 429."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="rl@teste.com", username="rl", password="x", location="CORP"
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.client.force_login(self.user)
+        self.ticket = Ticket.objects.create(
+            cliente=self.user, sumario="s", descricao="d", maximo_id="SR-RL"
+        )
+
+    def test_flood_criar_ticket(self):
+        url = reverse("tickets:criar_ticket")
+        for _ in range(5):
+            r = self.client.post(url, {})  # form inválido: barato, sem Maximo
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.post(url, {}).status_code, 429)
+
+    def test_flood_enviar_mensagem(self):
+        url = reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk})
+        for _ in range(20):
+            r = self.client.post(url, {})  # form inválido: barato, sem Maximo
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.post(url, {}).status_code, 429)
+
+    def test_flood_editar_interacao(self):
+        # id inexistente: o throttle conta o POST antes do get_object_or_404 (404).
+        url = reverse("tickets:editar_interacao", args=[999999])
+        for _ in range(20):
+            r = self.client.post(url)
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.post(url).status_code, 429)
+
+    def test_flood_marcar_todas_lidas(self):
+        url = reverse("tickets:marcar_todas_notificacoes_lidas")
+        for _ in range(20):
+            r = self.client.post(url)
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.post(url).status_code, 429)
+
+
+@override_settings(RATELIMIT_ENABLE=True)
+class RateLimitGetTests(TestCase):
+    """Rate limit nos endpoints GET: downloads (banda) e filtros (carga DB)."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="rlg@teste.com", username="rlg", password="x", location="CORP"
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.client.force_login(self.user)
+
+    def test_flood_download_interacao(self):
+        # id inexistente: throttle conta o GET antes do 404.
+        url = reverse("tickets:download_anexo", args=[999999])
+        for _ in range(40):
+            r = self.client.get(url)
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.get(url).status_code, 429)
+
+    def test_flood_download_multiplo(self):
+        url = reverse(
+            "tickets:download_anexo_multiplo",
+            args=["00000000-0000-0000-0000-000000000000"],
+        )
+        for _ in range(40):
+            r = self.client.get(url)
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.get(url).status_code, 429)
+
+    def test_flood_fila_atendimento(self):
+        url = reverse("tickets:fila_atendimento")
+        for _ in range(30):
+            r = self.client.get(url)  # 200 ou redirect; nunca 429 até o teto
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.get(url).status_code, 429)
+
+    def test_flood_meus_tickets(self):
+        url = reverse("tickets:meus_tickets")
+        for _ in range(30):
+            r = self.client.get(url)
+            self.assertNotEqual(r.status_code, 429)
+        self.assertEqual(self.client.get(url).status_code, 429)
+
+
+@override_settings(RATELIMIT_ENABLE=True)
+class GlobalThrottleTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="gt@teste.com", username="gt", password="x"
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+
+    @patch("tickets.middleware.RATE_GLOBAL", "3/m")
+    def test_rede_global_bloqueia_acima_do_teto(self):
+        self.client.force_login(self.user)
+        url = reverse("tickets:notificacoes_badge")  # endpoint leve, não decorado
+        for _ in range(3):
+            self.assertNotEqual(self.client.get(url).status_code, 429)
+        self.assertEqual(self.client.get(url).status_code, 429)
+
+    @patch("tickets.middleware.RATE_GLOBAL", "3/m")
+    def test_anonimo_nao_e_limitado_pela_rede_global(self):
+        # sem login: a rede global pula (login_view/axes cuidam do anônimo).
+        url = reverse("tickets:login")
+        for _ in range(6):
+            self.assertNotEqual(self.client.get(url).status_code, 429)
+
+    def test_pular_ignora_logs_e_anonimo(self):
+        from tickets.middleware import GlobalThrottleMiddleware
+        mw = GlobalThrottleMiddleware(lambda req: HttpResponse("ok"))
+        factory = RequestFactory()
+
+        req_logs = factory.get("/logs/stream/"); req_logs.user = self.user
+        self.assertTrue(mw._pular(req_logs))
+
+        from django.contrib.auth.models import AnonymousUser
+        req_anon = factory.get("/qualquer"); req_anon.user = AnonymousUser()
+        self.assertTrue(mw._pular(req_anon))
+
+        req_ok = factory.get("/meus-tickets/"); req_ok.user = self.user
+        self.assertFalse(mw._pular(req_ok))

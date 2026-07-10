@@ -64,10 +64,18 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "tickets.middleware.RequestLogMiddleware",
+    "tickets.middleware.GlobalThrottleMiddleware",  # rede global anti-flood (após auth, antes de axes)
     # AxesMiddleware deve ser o ÚLTIMO: intercepta o request bloqueado e
     # devolve a resposta de lockout antes de chegar na view de login.
     "axes.middleware.AxesMiddleware",
 ]
+
+# django-ratelimit fica DESLIGADO durante os testes para não estourar limites
+# acidentalmente (o contador LocMemCache persiste entre testes no mesmo
+# processo). Os testes de rate limit reativam com @override_settings(RATELIMIT_ENABLE=True).
+import sys
+if "test" in sys.argv:
+    RATELIMIT_ENABLE = False
 
 ROOT_URLCONF = "portal_suporte.urls"
 
