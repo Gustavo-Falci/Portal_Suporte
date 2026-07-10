@@ -112,6 +112,27 @@ DATABASES = {
     }
 }
 
+# CACHE
+# django-ratelimit conta requisições no cache do Django. Sem um cache
+# compartilhado, o LocMemCache padrão é POR PROCESSO: com N workers gunicorn
+# (prod roda 3), cada worker teria seu próprio contador -> limite efetivo ~N x
+# nominal, e o reciclo por --max-requests ainda zeraria o contador. DatabaseCache
+# usa o Postgres já existente (sem serviço novo), compartilhado e persistente,
+# então os limites valem entre os workers. Exige `manage.py createcachetable`.
+# Nos testes usa LocMemCache: o DB de teste não roda createcachetable, e os
+# testes de rate limit (RATELIMIT_ENABLE=True) precisam de um cache funcional.
+if "test" in sys.argv:
+    CACHES = {
+        "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": "portal_cache",
+        }
+    }
+
 # VALIDAÇÃO DE SENHA E I18N
 
 AUTH_PASSWORD_VALIDATORS = [
