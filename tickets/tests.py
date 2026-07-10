@@ -2369,3 +2369,45 @@ class RateLimitGetTests(TestCase):
             r = self.client.get(url)
             self.assertNotEqual(r.status_code, 429)
         self.assertEqual(self.client.get(url).status_code, 429)
+
+
+@override_settings(RATELIMIT_ENABLE=True)
+class GlobalThrottleTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="gt@teste.com", username="gt", password="x"
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+
+    @patch("tickets.middleware.RATE_GLOBAL", "3/m")
+    def test_rede_global_bloqueia_acima_do_teto(self):
+        self.client.force_login(self.user)
+        url = reverse("tickets:notificacoes_badge")  # endpoint leve, não decorado
+        for _ in range(3):
+            self.assertNotEqual(self.client.get(url).status_code, 429)
+        self.assertEqual(self.client.get(url).status_code, 429)
+
+    @patch("tickets.middleware.RATE_GLOBAL", "3/m")
+    def test_anonimo_nao_e_limitado_pela_rede_global(self):
+        # sem login: a rede global pula (login_view/axes cuidam do anônimo).
+        url = reverse("tickets:login")
+        for _ in range(6):
+            self.assertNotEqual(self.client.get(url).status_code, 429)
+
+    def test_pular_ignora_logs_e_anonimo(self):
+        from tickets.middleware import GlobalThrottleMiddleware
+        mw = GlobalThrottleMiddleware(lambda req: HttpResponse("ok"))
+        factory = RequestFactory()
+
+        req_logs = factory.get("/logs/stream/"); req_logs.user = self.user
+        self.assertTrue(mw._pular(req_logs))
+
+        from django.contrib.auth.models import AnonymousUser
+        req_anon = factory.get("/qualquer"); req_anon.user = AnonymousUser()
+        self.assertTrue(mw._pular(req_anon))
+
+        req_ok = factory.get("/meus-tickets/"); req_ok.user = self.user
+        self.assertFalse(mw._pular(req_ok))

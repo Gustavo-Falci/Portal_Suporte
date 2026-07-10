@@ -64,6 +64,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "tickets.middleware.RequestLogMiddleware",
+    "tickets.middleware.GlobalThrottleMiddleware",  # rede global anti-flood (após auth, antes de axes)
     # AxesMiddleware deve ser o ÚLTIMO: intercepta o request bloqueado e
     # devolve a resposta de lockout antes de chegar na view de login.
     "axes.middleware.AxesMiddleware",
