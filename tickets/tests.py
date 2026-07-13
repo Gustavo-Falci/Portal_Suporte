@@ -8,6 +8,7 @@ from django.urls import reverse
 from unittest.mock import patch
 from django.core import mail
 from django.core.cache import cache
+from django.apps import apps as django_apps
 from .models import Ticket, TicketInteracao, Ambiente, Notificacao, Area, Cliente
 from .forms import TicketForm
 from .services import MaximoSenderService, NotificationService
@@ -2411,3 +2412,115 @@ class GlobalThrottleTests(TestCase):
 
         req_ok = factory.get("/meus-tickets/"); req_ok.user = self.user
         self.assertFalse(mw._pular(req_ok))
+
+
+class AutoInscricaoColegaViewTest(TestCase):
+    """Colega da mesma empresa que posta no chat vira colega_notificado.
+    Solicitante e consultor/owner NÃO entram (já são notificados por outra via)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.g_cons = Group.objects.create(name="Consultores")
+        self.amb = Ambiente.objects.create(nome_ambiente="Prod", numero_ativo="A1")
+        self.dono = Cliente.objects.create_user(
+            username="dono", email="dono@empresa.com", password="x", location="PAMPA"
+        )
+        self.colega = Cliente.objects.create_user(
+            username="colega", email="colega@empresa.com", password="x", location="PAMPA"
+        )
+        self.consultor = Cliente.objects.create_user(
+            username="cons", email="c@empresa.com", password="x",
+            location="PAMPA", person_id="P01",
+        )
+        self.consultor.groups.add(self.g_cons)
+        self.ticket = Ticket.objects.create(
+            cliente=self.dono, ambiente=self.amb, sumario="s", descricao="d",
+            prioridade="3", status_maximo="INPROG", maximo_id="SR1", owner="P01",
+        )
+        cache.clear()
+
+    def _post(self, msg):
+        url = reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk})
+        with patch("tickets.views.MaximoSenderService.enviar_interacao", return_value=True), \
+             patch("tickets.views.NotificationService.notificar_nova_interacao"):
+            return self.client.post(url, {"mensagem": msg})
+
+    def test_colega_que_posta_vira_notificado(self):
+        self.client.force_login(self.colega)
+        self._post("ajuda")
+        self.assertIn(self.colega, self.ticket.colegas_notificados.all())
+
+    def test_solicitante_que_posta_nao_entra(self):
+        self.client.force_login(self.dono)
+        self._post("minha msg")
+        self.assertNotIn(self.dono, self.ticket.colegas_notificados.all())
+
+    def test_consultor_owner_que_posta_nao_entra(self):
+        self.client.force_login(self.consultor)
+        self._post("resposta")
+        self.assertNotIn(self.consultor, self.ticket.colegas_notificados.all())
+
+    def test_segundo_post_do_colega_nao_duplica(self):
+        self.client.force_login(self.colega)
+        self._post("um")
+        self._post("dois")
+        self.assertEqual(
+            self.ticket.colegas_notificados.filter(pk=self.colega.pk).count(), 1
+        )
+
+
+class BackfillColegasInteragentesTest(TestCase):
+    """Backfill: autores de interações que sejam colegas elegíveis viram
+    colegas_notificados. Inelegíveis (outra empresa, consultor, gmail cruzado)
+    ficam de fora. Idempotente."""
+
+    def setUp(self):
+        self.g_cons = Group.objects.create(name="Consultores")
+        self.amb = Ambiente.objects.create(nome_ambiente="Prod", numero_ativo="A1")
+        self.dono = Cliente.objects.create_user(
+            username="dono", email="dono@empresa.com", password="x", location="PAMPA"
+        )
+        self.ticket = Ticket.objects.create(
+            cliente=self.dono, ambiente=self.amb, sumario="s", descricao="d", prioridade="3"
+        )
+        self.colega = Cliente.objects.create_user(
+            username="colega", email="colega@empresa.com", password="x", location="PAMPA"
+        )
+        self.intruso = Cliente.objects.create_user(
+            username="intruso", email="i@abl.com", password="x", location="ABL"
+        )
+        self.consultor = Cliente.objects.create_user(
+            username="cons", email="c@empresa.com", password="x", location="PAMPA"
+        )
+        self.consultor.groups.add(self.g_cons)
+        self.gmail = Cliente.objects.create_user(
+            username="gm", email="alguem@gmail.com", password="x", location="PAMPA"
+        )
+        # Histórico de interações no ticket (autores variados)
+        for autor in (self.colega, self.intruso, self.consultor, self.gmail):
+            TicketInteracao.objects.create(ticket=self.ticket, autor=autor, mensagem="oi")
+
+    def test_backfill_inscreve_so_colega_elegivel(self):
+        from tickets.backfill import inscrever_colegas_interagentes
+        inscrever_colegas_interagentes(django_apps)
+        notificados = set(self.ticket.colegas_notificados.all())
+        self.assertIn(self.colega, notificados)
+        self.assertNotIn(self.intruso, notificados)      # outra empresa
+        self.assertNotIn(self.consultor, notificados)    # grupo Consultores
+        self.assertNotIn(self.gmail, notificados)        # mundo de e-mail cruzado
+        self.assertNotIn(self.dono, notificados)         # solicitante
+
+    def test_backfill_idempotente(self):
+        from tickets.backfill import inscrever_colegas_interagentes
+        inscrever_colegas_interagentes(django_apps)
+        inscrever_colegas_interagentes(django_apps)
+        self.assertEqual(
+            self.ticket.colegas_notificados.filter(pk=self.colega.pk).count(), 1
+        )
+
+    def test_backfill_location_vazia_ignora(self):
+        from tickets.backfill import inscrever_colegas_interagentes
+        self.dono.location = ""
+        self.dono.save()
+        inscrever_colegas_interagentes(django_apps)
+        self.assertEqual(self.ticket.colegas_notificados.count(), 0)
