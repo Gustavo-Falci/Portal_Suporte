@@ -2411,3 +2411,58 @@ class GlobalThrottleTests(TestCase):
 
         req_ok = factory.get("/meus-tickets/"); req_ok.user = self.user
         self.assertFalse(mw._pular(req_ok))
+
+
+class AutoInscricaoColegaViewTest(TestCase):
+    """Colega da mesma empresa que posta no chat vira colega_notificado.
+    Solicitante e consultor/owner NÃO entram (já são notificados por outra via)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.g_cons = Group.objects.create(name="Consultores")
+        self.amb = Ambiente.objects.create(nome_ambiente="Prod", numero_ativo="A1")
+        self.dono = Cliente.objects.create_user(
+            username="dono", email="dono@empresa.com", password="x", location="PAMPA"
+        )
+        self.colega = Cliente.objects.create_user(
+            username="colega", email="colega@empresa.com", password="x", location="PAMPA"
+        )
+        self.consultor = Cliente.objects.create_user(
+            username="cons", email="c@empresa.com", password="x",
+            location="PAMPA", person_id="P01",
+        )
+        self.consultor.groups.add(self.g_cons)
+        self.ticket = Ticket.objects.create(
+            cliente=self.dono, ambiente=self.amb, sumario="s", descricao="d",
+            prioridade="3", status_maximo="INPROG", maximo_id="SR1", owner="P01",
+        )
+        cache.clear()
+
+    def _post(self, msg):
+        url = reverse("tickets:detalhe_ticket", kwargs={"pk": self.ticket.pk})
+        with patch("tickets.views.MaximoSenderService.enviar_interacao", return_value=True), \
+             patch("tickets.views.NotificationService.notificar_nova_interacao"):
+            return self.client.post(url, {"mensagem": msg})
+
+    def test_colega_que_posta_vira_notificado(self):
+        self.client.force_login(self.colega)
+        self._post("ajuda")
+        self.assertIn(self.colega, self.ticket.colegas_notificados.all())
+
+    def test_solicitante_que_posta_nao_entra(self):
+        self.client.force_login(self.dono)
+        self._post("minha msg")
+        self.assertNotIn(self.dono, self.ticket.colegas_notificados.all())
+
+    def test_consultor_owner_que_posta_nao_entra(self):
+        self.client.force_login(self.consultor)
+        self._post("resposta")
+        self.assertNotIn(self.consultor, self.ticket.colegas_notificados.all())
+
+    def test_segundo_post_do_colega_nao_duplica(self):
+        self.client.force_login(self.colega)
+        self._post("um")
+        self._post("dois")
+        self.assertEqual(
+            self.ticket.colegas_notificados.filter(pk=self.colega.pk).count(), 1
+        )

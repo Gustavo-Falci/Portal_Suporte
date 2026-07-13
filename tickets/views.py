@@ -434,6 +434,13 @@ def detalhe_ticket(request: HttpRequest, pk: int) -> HttpResponse:
                 InteracaoAnexo.objects.create(interacao=interacao, arquivo=arquivo_recebido)
             audit.registrar(request.user, f"adicionou interação ao Ticket #{ticket.id}")
 
+            # Colega da mesma empresa que interage passa a ser notificado do
+            # ticket (sino + e-mail) daqui pra frente. Requester e consultor/
+            # owner já são notificados — _colegas_elegiveis os exclui. .add()
+            # é idempotente: posts seguintes não duplicam.
+            if _colegas_elegiveis(ticket).filter(pk=request.user.pk).exists():
+                ticket.colegas_notificados.add(request.user)
+
             sincronizado = MaximoSenderService.enviar_interacao(ticket, interacao)
 
             if not sincronizado:
