@@ -8,6 +8,7 @@ from django.urls import reverse
 from unittest.mock import patch
 from django.core import mail
 from django.core.cache import cache
+from django.apps import apps as django_apps
 from .models import Ticket, TicketInteracao, Ambiente, Notificacao, Area, Cliente
 from .forms import TicketForm
 from .services import MaximoSenderService, NotificationService
@@ -2466,3 +2467,60 @@ class AutoInscricaoColegaViewTest(TestCase):
         self.assertEqual(
             self.ticket.colegas_notificados.filter(pk=self.colega.pk).count(), 1
         )
+
+
+class BackfillColegasInteragentesTest(TestCase):
+    """Backfill: autores de interações que sejam colegas elegíveis viram
+    colegas_notificados. Inelegíveis (outra empresa, consultor, gmail cruzado)
+    ficam de fora. Idempotente."""
+
+    def setUp(self):
+        self.g_cons = Group.objects.create(name="Consultores")
+        self.amb = Ambiente.objects.create(nome_ambiente="Prod", numero_ativo="A1")
+        self.dono = Cliente.objects.create_user(
+            username="dono", email="dono@empresa.com", password="x", location="PAMPA"
+        )
+        self.ticket = Ticket.objects.create(
+            cliente=self.dono, ambiente=self.amb, sumario="s", descricao="d", prioridade="3"
+        )
+        self.colega = Cliente.objects.create_user(
+            username="colega", email="colega@empresa.com", password="x", location="PAMPA"
+        )
+        self.intruso = Cliente.objects.create_user(
+            username="intruso", email="i@abl.com", password="x", location="ABL"
+        )
+        self.consultor = Cliente.objects.create_user(
+            username="cons", email="c@empresa.com", password="x", location="PAMPA"
+        )
+        self.consultor.groups.add(self.g_cons)
+        self.gmail = Cliente.objects.create_user(
+            username="gm", email="alguem@gmail.com", password="x", location="PAMPA"
+        )
+        # Histórico de interações no ticket (autores variados)
+        for autor in (self.colega, self.intruso, self.consultor, self.gmail):
+            TicketInteracao.objects.create(ticket=self.ticket, autor=autor, mensagem="oi")
+
+    def test_backfill_inscreve_so_colega_elegivel(self):
+        from tickets.backfill import inscrever_colegas_interagentes
+        inscrever_colegas_interagentes(django_apps)
+        notificados = set(self.ticket.colegas_notificados.all())
+        self.assertIn(self.colega, notificados)
+        self.assertNotIn(self.intruso, notificados)      # outra empresa
+        self.assertNotIn(self.consultor, notificados)    # grupo Consultores
+        self.assertNotIn(self.gmail, notificados)        # mundo de e-mail cruzado
+        self.assertNotIn(self.dono, notificados)         # solicitante
+
+    def test_backfill_idempotente(self):
+        from tickets.backfill import inscrever_colegas_interagentes
+        inscrever_colegas_interagentes(django_apps)
+        inscrever_colegas_interagentes(django_apps)
+        self.assertEqual(
+            self.ticket.colegas_notificados.filter(pk=self.colega.pk).count(), 1
+        )
+
+    def test_backfill_location_vazia_ignora(self):
+        from tickets.backfill import inscrever_colegas_interagentes
+        self.dono.location = ""
+        self.dono.save()
+        inscrever_colegas_interagentes(django_apps)
+        self.assertEqual(self.ticket.colegas_notificados.count(), 0)
