@@ -468,6 +468,7 @@ class AreaMultiplosClientesTests(TestCase):
 from io import StringIO
 from datetime import timedelta
 from django.utils import timezone
+from django.core.management import call_command
 from django.core.management.base import OutputWrapper
 from tickets.management.commands.sincronizar_maximo import Command
 
@@ -575,6 +576,28 @@ class SyncMaximoMatchTests(TestCase):
         self._cmd().processar_tickets([item])
         ticket.refresh_from_db()
         self.assertEqual(ticket.maximo_id, "SR-BUF")
+
+    def test_item_com_description_nula_nao_quebra_sync(self):
+        # _dropnulls=0 faz o Maximo devolver "description": null para SR sem
+        # descrição; item.get('description', '') retorna None, não o default.
+        ticket = self._novo_ticket()
+        item = {"ticketid": "SR-NULL", "description": None, "status": "INPROG",
+                "owner": "t", "reportdate": timezone.now().isoformat()}
+        self._cmd().processar_tickets([item])
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.maximo_id)
+
+    def test_item_com_description_nula_nao_impede_demais(self):
+        # O item quebrado não pode abortar o lote inteiro.
+        ticket = self._novo_ticket()
+        item_ruim = {"ticketid": "SR-NULL", "description": None,
+                     "status": "INPROG", "owner": "t",
+                     "reportdate": timezone.now().isoformat()}
+        item_bom = self._item(ticket, ticketid="SR-OK", status="INPROG",
+                              delta=timedelta(minutes=1))
+        self._cmd().processar_tickets([item_ruim, item_bom])
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.maximo_id, "SR-OK")
 
     def test_ticket_ja_vinculado_fecha_normal(self):
         # Guarda NÃO afeta tickets já vinculados: fechamento legítimo passa
@@ -2524,3 +2547,77 @@ class BackfillColegasInteragentesTest(TestCase):
         self.dono.save()
         inscrever_colegas_interagentes(django_apps)
         self.assertEqual(self.ticket.colegas_notificados.count(), 0)
+
+
+class ReenviarNotificacoesEmailTests(TestCase):
+    """Reenvio de notificações cujo e-mail morreu na falha de SMTP (535)."""
+
+    def setUp(self):
+        self.user = Cliente.objects.create(
+            email="dono@reenvio.com", username="dono_reenvio", first_name="Ana"
+        )
+        self.ticket = Ticket.objects.create(
+            cliente=self.user, sumario="Impressora parada", descricao="d",
+            status_maximo="INPROG", maximo_id="SR-500",
+        )
+        mail.outbox = []
+
+    def _notificacao(self, *, quando, tipo="status", mensagem="O chamado agora está: Em Andamento"):
+        n = Notificacao.objects.create(
+            destinatario=self.user, ticket=self.ticket, titulo="Status Atualizado",
+            tipo=tipo, mensagem=mensagem, link=f"/tickets/{self.ticket.pk}/",
+        )
+        # data_criacao é auto_now_add; sobrescreve para posicionar na janela
+        Notificacao.objects.filter(pk=n.pk).update(data_criacao=quando)
+        return n
+
+    def _run(self, *args):
+        out = StringIO()
+        call_command("reenviar_notificacoes_email", *args, stdout=out)
+        return out.getvalue()
+
+    def test_dry_run_e_padrao_nao_envia(self):
+        self._notificacao(quando=timezone.now() - timedelta(hours=1))
+        saida = self._run("--desde", (timezone.now() - timedelta(hours=2)).isoformat(),
+                          "--ate", timezone.now().isoformat())
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertIn("dono@reenvio.com", saida)
+
+    def test_enviar_manda_email_por_notificacao(self):
+        self._notificacao(quando=timezone.now() - timedelta(hours=1))
+        self._run("--desde", (timezone.now() - timedelta(hours=2)).isoformat(),
+                  "--ate", timezone.now().isoformat(), "--enviar")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["dono@reenvio.com"])
+
+    def test_ignora_notificacao_fora_da_janela(self):
+        self._notificacao(quando=timezone.now() - timedelta(days=5))
+        self._run("--desde", (timezone.now() - timedelta(hours=2)).isoformat(),
+                  "--ate", timezone.now().isoformat(), "--enviar")
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_usa_status_congelado_nao_o_atual_do_ticket(self):
+        # Notificação diz "Em Andamento"; o ticket já mudou para CLOSED desde
+        # então. O reenvio deve refletir o fato do momento, não o estado atual.
+        self._notificacao(quando=timezone.now() - timedelta(hours=1),
+                          mensagem="O chamado agora está: Em Andamento")
+        # .update() evita o signal de status (que dispararia e-mail e sujaria o outbox)
+        Ticket.objects.filter(pk=self.ticket.pk).update(status_maximo="CLOSED")
+        mail.outbox = []
+        self._run("--desde", (timezone.now() - timedelta(hours=2)).isoformat(),
+                  "--ate", timezone.now().isoformat(), "--enviar")
+        corpo = mail.outbox[0].body
+        self.assertIn("Em Andamento", corpo)
+        self.assertNotIn("Fechado", corpo)
+
+    def test_corpo_avisa_que_e_reenvio_atrasado(self):
+        self._notificacao(quando=timezone.now() - timedelta(hours=1))
+        self._run("--desde", (timezone.now() - timedelta(hours=2)).isoformat(),
+                  "--ate", timezone.now().isoformat(), "--enviar")
+        self.assertIn("atraso", mail.outbox[0].body.lower())
+
+    def test_link_absoluto_no_corpo(self):
+        self._notificacao(quando=timezone.now() - timedelta(hours=1))
+        self._run("--desde", (timezone.now() - timedelta(hours=2)).isoformat(),
+                  "--ate", timezone.now().isoformat(), "--enviar")
+        self.assertIn(f"/tickets/{self.ticket.pk}/", mail.outbox[0].body)
