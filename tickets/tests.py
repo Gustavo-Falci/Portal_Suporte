@@ -2736,3 +2736,49 @@ class CapturaEmailPendenteTest(TestCase):
         NotificationService._enviar_email_generico([], "A", "<p>c</p>")
         self.assertEqual(EmailPendente.objects.count(), 0)
         self.assertEqual(len(mail.outbox), 0)
+
+
+class ReprocessarEmailsPendentesTest(TestCase):
+    def setUp(self):
+        mail.outbox = []
+
+    def _pendente(self, destinatario="a@x.com", **kwargs):
+        return EmailPendente.objects.create(
+            destinatario=destinatario, assunto="Assunto X",
+            corpo_html="<p>corpo</p>", **kwargs
+        )
+
+    def _run(self):
+        out = StringIO()
+        call_command("reprocessar_emails_pendentes", stdout=out)
+        return out.getvalue()
+
+    def test_envia_pendente_e_apaga_a_linha(self):
+        self._pendente("a@x.com")
+        self._run()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["a@x.com"])
+        self.assertEqual(mail.outbox[0].subject, "Assunto X")
+        self.assertEqual(mail.outbox[0].body, "<p>corpo</p>")
+        self.assertEqual(EmailPendente.objects.count(), 0)
+
+    def test_email_reenviado_e_html(self):
+        self._pendente()
+        self._run()
+        self.assertEqual(mail.outbox[0].content_subtype, "html")
+
+    @patch("tickets.management.commands.reprocessar_emails_pendentes.EmailMessage.send",
+           side_effect=Exception("[Errno 111] Connection refused"))
+    def test_falha_incrementa_tentativas_e_mantem_a_linha(self, _mock_send):
+        p = self._pendente(tentativas=1)
+        self._run()
+        p.refresh_from_db()
+        self.assertEqual(p.tentativas, 2)
+        self.assertIn("Connection refused", p.ultimo_erro)
+        self.assertIsNotNone(p.ultima_tentativa_em)
+        self.assertFalse(p.desistiu)
+        self.assertEqual(EmailPendente.objects.count(), 1)
+
+    def test_sem_pendentes_nao_faz_nada(self):
+        self._run()
+        self.assertEqual(len(mail.outbox), 0)
