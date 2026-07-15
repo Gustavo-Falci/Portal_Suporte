@@ -98,8 +98,10 @@ class Command(BaseCommand):
                 tickets_sem_id.append(t)
 
         for item in items:
-            mx_id = str(item.get('ticketid', ''))
-            mx_desc_clean = item.get('description', '').strip().lower()
+            # _dropnulls=0: a API devolve chaves com valor null, então o default
+            # do .get() não protege — normaliza para "" antes de usar.
+            mx_id = str(item.get('ticketid') or '').strip()
+            mx_desc_clean = (item.get('description') or '').strip().lower()
             mx_reportdate = self._parse_maximo_date(item.get('reportdate'))
 
             if not mx_id:
@@ -112,7 +114,7 @@ class Command(BaseCommand):
                 tickets_para_processar.append(tickets_por_id[mx_id])
 
             # Descoberta por texto (ticket sem maximo_id vinculado)
-            else:
+            elif mx_desc_clean:  # SR sem description nunca casa por texto
                 matches_encontrados = []
 
                 for t_local in list(tickets_sem_id):
