@@ -2697,3 +2697,42 @@ class EmailPendenteModelTest(TestCase):
             list(EmailPendente.objects.values_list("destinatario", flat=True)),
             ["antiga@x.com", "nova@x.com"],
         )
+
+
+class CapturaEmailPendenteTest(TestCase):
+    def setUp(self):
+        mail.outbox = []
+
+    @patch("tickets.services.EmailMessage.send", side_effect=Exception("(535, b'Incorrect authentication data')"))
+    def test_falha_grava_pendente_com_email_renderizado(self, _mock_send):
+        NotificationService._enviar_email_generico(
+            ["a@x.com"], "Assunto X", "<p>corpo renderizado</p>"
+        )
+        p = EmailPendente.objects.get()
+        self.assertEqual(p.destinatario, "a@x.com")
+        self.assertEqual(p.assunto, "Assunto X")
+        self.assertEqual(p.corpo_html, "<p>corpo renderizado</p>")
+        self.assertEqual(p.tentativas, 1)
+        self.assertIn("535", p.ultimo_erro)
+        self.assertIsNotNone(p.ultima_tentativa_em)
+        self.assertFalse(p.desistiu)
+
+    @patch("tickets.services.EmailMessage.send", side_effect=Exception("boom"))
+    def test_falha_grava_uma_linha_por_destinatario(self, _mock_send):
+        NotificationService._enviar_email_generico(
+            ["a@x.com", "b@x.com"], "A", "<p>c</p>"
+        )
+        self.assertEqual(
+            sorted(EmailPendente.objects.values_list("destinatario", flat=True)),
+            ["a@x.com", "b@x.com"],
+        )
+
+    def test_sucesso_nao_grava_pendente(self):
+        NotificationService._enviar_email_generico(["a@x.com"], "A", "<p>c</p>")
+        self.assertEqual(EmailPendente.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_lista_vazia_nao_grava_nada(self):
+        NotificationService._enviar_email_generico([], "A", "<p>c</p>")
+        self.assertEqual(EmailPendente.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)

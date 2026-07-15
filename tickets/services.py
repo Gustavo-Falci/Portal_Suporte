@@ -6,9 +6,10 @@ import mimetypes
 from urllib.parse import urlparse
 from django.core.mail import EmailMessage
 from django.conf import settings
-from .models import Ticket, TicketInteracao, Cliente, Notificacao
+from .models import Ticket, TicketInteracao, Cliente, Notificacao, EmailPendente
 from django.urls import reverse
 from django.utils.html import strip_tags, escape
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,18 @@ class NotificationService:
 
         except Exception as e:
             logger.error(f"Erro ao enviar notificação por e-mail: {e}")
+            # Guarda o e-mail já renderizado para o retry (reprocessar_emails_pendentes).
+            # Uma linha por destinatário: a falha e a retentativa são individuais.
+            agora = timezone.now()
+            for endereco in destinatarios:
+                EmailPendente.objects.create(
+                    destinatario=endereco,
+                    assunto=assunto,
+                    corpo_html=corpo_html,
+                    tentativas=1,
+                    ultimo_erro=str(e),
+                    ultima_tentativa_em=agora,
+                )
 
     @classmethod
     def notificar_mudanca_status(cls, ticket: Ticket, status_anterior_display: str):
