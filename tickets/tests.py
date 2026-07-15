@@ -2669,6 +2669,7 @@ class ReenviarFiltroParaTests(TestCase):
         saida = self._run(*self._janela(), "--para", "bob@f.com")
         self.assertIn("bob@f.com", saida)
         self.assertNotIn("ana@f.com", saida)
+        self.assertEqual(len(mail.outbox), 0)
 
 
 class EmailPendenteModelTest(TestCase):
@@ -2696,4 +2697,3 @@ class EmailPendenteModelTest(TestCase):
             list(EmailPendente.objects.values_list("destinatario", flat=True)),
             ["antiga@x.com", "nova@x.com"],
         )
-        self.assertEqual(len(mail.outbox), 0)
