@@ -472,3 +472,30 @@ class Notificacao(models.Model):
 
     def __str__(self):
         return f"{self.titulo} - {self.destinatario}"
+
+
+class EmailPendente(models.Model):
+
+    """
+    E-mail de notificação que falhou no envio e aguarda retentativa.
+
+    A linha é apagada quando o envio dá certo — a fila são as linhas que
+    existem. `desistiu=True` marca as que passaram do prazo e precisam de
+    decisão manual (ver comando reenviar_notificacoes_email).
+    """
+
+    destinatario = models.EmailField()
+    assunto = models.CharField(max_length=255)
+    corpo_html = models.TextField()
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+    tentativas = models.PositiveIntegerField(default=0)
+    ultimo_erro = models.TextField(blank=True)
+    ultima_tentativa_em = models.DateTimeField(null=True, blank=True)
+    desistiu = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["criado_em"]
+
+    def __str__(self):
+        return f"{self.destinatario} - {self.assunto}"

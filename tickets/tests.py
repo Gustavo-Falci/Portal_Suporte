@@ -9,7 +9,9 @@ from unittest.mock import patch
 from django.core import mail
 from django.core.cache import cache
 from django.apps import apps as django_apps
-from .models import Ticket, TicketInteracao, Ambiente, Notificacao, Area, Cliente
+from .models import (
+    Ticket, TicketInteracao, Ambiente, Notificacao, Area, Cliente, EmailPendente
+)
 from .forms import TicketForm
 from .services import MaximoSenderService, NotificationService
 from tickets.views import _tickets_visiveis_cliente, _usuario_tem_acesso_ticket
@@ -2667,4 +2669,31 @@ class ReenviarFiltroParaTests(TestCase):
         saida = self._run(*self._janela(), "--para", "bob@f.com")
         self.assertIn("bob@f.com", saida)
         self.assertNotIn("ana@f.com", saida)
+
+
+class EmailPendenteModelTest(TestCase):
+    def test_defaults_de_uma_linha_nova(self):
+        p = EmailPendente.objects.create(
+            destinatario="a@x.com", assunto="A", corpo_html="<p>c</p>"
+        )
+        self.assertEqual(p.tentativas, 0)
+        self.assertEqual(p.ultimo_erro, "")
+        self.assertIsNone(p.ultima_tentativa_em)
+        self.assertFalse(p.desistiu)
+        self.assertIsNotNone(p.criado_em)
+
+    def test_ordering_mais_antigo_primeiro(self):
+        nova = EmailPendente.objects.create(
+            destinatario="nova@x.com", assunto="A", corpo_html="<p>c</p>"
+        )
+        antiga = EmailPendente.objects.create(
+            destinatario="antiga@x.com", assunto="A", corpo_html="<p>c</p>"
+        )
+        EmailPendente.objects.filter(pk=antiga.pk).update(
+            criado_em=timezone.now() - timedelta(hours=5)
+        )
+        self.assertEqual(
+            list(EmailPendente.objects.values_list("destinatario", flat=True)),
+            ["antiga@x.com", "nova@x.com"],
+        )
         self.assertEqual(len(mail.outbox), 0)
