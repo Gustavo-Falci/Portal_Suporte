@@ -2621,3 +2621,50 @@ class ReenviarNotificacoesEmailTests(TestCase):
         self._run("--desde", (timezone.now() - timedelta(hours=2)).isoformat(),
                   "--ate", timezone.now().isoformat(), "--enviar")
         self.assertIn(f"/tickets/{self.ticket.pk}/", mail.outbox[0].body)
+
+
+class ReenviarFiltroParaTests(TestCase):
+    """--para isola um destinatário quando a janela pega vários (mesmo bulk_create)."""
+
+    def setUp(self):
+        self.ana = Cliente.objects.create(email="ana@f.com", username="ana_f", first_name="Ana")
+        self.bob = Cliente.objects.create(email="bob@f.com", username="bob_f", first_name="Bob")
+        self.ticket = Ticket.objects.create(
+            cliente=self.ana, sumario="S", descricao="d", status_maximo="INPROG", maximo_id="SR-9"
+        )
+        quando = timezone.now() - timedelta(hours=1)
+        for dest in (self.ana, self.bob):
+            n = Notificacao.objects.create(
+                destinatario=dest, ticket=self.ticket, titulo="Nova Mensagem",
+                tipo="mensagem", mensagem="x: y", link=f"/tickets/{self.ticket.pk}/",
+            )
+            Notificacao.objects.filter(pk=n.pk).update(data_criacao=quando)
+        mail.outbox = []
+
+    def _run(self, *args):
+        out = StringIO()
+        call_command("reenviar_notificacoes_email", *args, stdout=out)
+        return out.getvalue()
+
+    def _janela(self):
+        return ("--desde", (timezone.now() - timedelta(hours=2)).isoformat(),
+                "--ate", timezone.now().isoformat())
+
+    def test_para_envia_so_ao_destinatario_indicado(self):
+        self._run(*self._janela(), "--para", "bob@f.com", "--enviar")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["bob@f.com"])
+
+    def test_sem_para_envia_a_todos(self):
+        self._run(*self._janela(), "--enviar")
+        self.assertEqual(len(mail.outbox), 2)
+
+    def test_para_e_case_insensitive(self):
+        self._run(*self._janela(), "--para", "BOB@F.COM", "--enviar")
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_para_no_dry_run_lista_so_o_indicado(self):
+        saida = self._run(*self._janela(), "--para", "bob@f.com")
+        self.assertIn("bob@f.com", saida)
+        self.assertNotIn("ana@f.com", saida)
+        self.assertEqual(len(mail.outbox), 0)

@@ -25,6 +25,9 @@ class Command(BaseCommand):
                             help="Fim da janela (ISO 8601).")
         parser.add_argument("--enviar", action="store_true",
                             help="Envia de verdade. Sem esta flag, apenas lista (dry-run).")
+        parser.add_argument("--para", default=None,
+                            help="Reenvia só para este e-mail. Use quando a janela pega vários "
+                                 "destinatários do mesmo lote e só um precisa ser reenviado.")
 
     def handle(self, *args, **options):
         desde = self._parse_arg_date(options["desde"], "--desde")
@@ -42,9 +45,15 @@ class Command(BaseCommand):
             .order_by("data_criacao")
         )
 
+        para = options["para"]
+        if para:
+            notificacoes = notificacoes.filter(destinatario__email__iexact=para)
+
         modo = "ENVIO REAL" if enviar else "DRY-RUN (nada será enviado)"
         self.stdout.write(f"--- Reenvio de notificações | {modo} ---")
         self.stdout.write(f"Janela: {desde.isoformat()} até {ate.isoformat()}")
+        if para:
+            self.stdout.write(f"Filtro de destinatário: {para}")
 
         total_enviados = 0
         total_sem_email = 0
