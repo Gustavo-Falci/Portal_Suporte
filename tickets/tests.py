@@ -2794,3 +2794,30 @@ class ReprocessarEmailsPendentesTest(TestCase):
         self.assertEqual(p.tentativas, 1)
         self.assertEqual(p.ultimo_erro, "")
         self.assertEqual(len(mail.outbox), 1)
+
+    def _envelhecer(self, pendente, horas):
+        EmailPendente.objects.filter(pk=pendente.pk).update(
+            criado_em=timezone.now() - timedelta(hours=horas)
+        )
+
+    def test_linha_com_mais_de_72h_desiste_sem_tentar_enviar(self):
+        p = self._pendente()
+        self._envelhecer(p, 73)
+        self._run()
+        p.refresh_from_db()
+        self.assertTrue(p.desistiu)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(p.tentativas, 0)
+
+    def test_linha_com_menos_de_72h_ainda_e_enviada(self):
+        p = self._pendente()
+        self._envelhecer(p, 71)
+        self._run()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(EmailPendente.objects.count(), 0)
+
+    def test_linha_que_desistiu_e_ignorada_nos_ticks_seguintes(self):
+        self._pendente(desistiu=True)
+        self._run()
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(EmailPendente.objects.count(), 1)

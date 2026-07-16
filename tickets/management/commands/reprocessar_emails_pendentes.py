@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
@@ -8,6 +9,10 @@ from django.utils import timezone
 from tickets.models import EmailPendente
 
 logger = logging.getLogger(__name__)
+
+# Prazo até desistir de uma linha. 72h cobre com folga o incidente real de 31h
+# (SMTP 535 de 2026-07-14 09:55 a 2026-07-15 ~17:00) e um fim de semana.
+PRAZO_DESISTENCIA = timedelta(hours=72)
 
 
 class Command(BaseCommand):
@@ -22,12 +27,24 @@ class Command(BaseCommand):
         if not pendentes:
             return
 
+        limite = timezone.now() - PRAZO_DESISTENCIA
         enviados = 0
         falhas = 0
+        desistidos = 0
 
         connection = get_connection()
         try:
             for pendente in pendentes:
+                if pendente.criado_em < limite:
+                    pendente.desistiu = True
+                    pendente.save(update_fields=["desistiu"])
+                    desistidos += 1
+                    logger.error(
+                        f"Desistindo de {pendente.destinatario} após "
+                        f"{PRAZO_DESISTENCIA}: {pendente.assunto}"
+                    )
+                    continue
+
                 if self._enviar(pendente, connection):
                     enviados += 1
                 else:
@@ -35,7 +52,10 @@ class Command(BaseCommand):
         finally:
             connection.close()
 
-        resumo = f"Reprocessamento: {enviados} enviado(s) | {falhas} falha(s)"
+        resumo = (
+            f"Reprocessamento: {enviados} enviado(s) | "
+            f"{falhas} falha(s) | {desistidos} desistido(s)"
+        )
         logger.info(resumo)
         self.stdout.write(resumo)
 
