@@ -1,5 +1,6 @@
 import logging
 import os
+from django.conf import settings
 from django.test import TestCase, Client, SimpleTestCase, RequestFactory, override_settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Group
@@ -2758,6 +2759,7 @@ class ReprocessarEmailsPendentesTest(TestCase):
         self._run()
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["a@x.com"])
+        self.assertEqual(mail.outbox[0].from_email, settings.DEFAULT_FROM_EMAIL)
         self.assertEqual(mail.outbox[0].subject, "Assunto X")
         self.assertEqual(mail.outbox[0].body, "<p>corpo</p>")
         self.assertEqual(EmailPendente.objects.count(), 0)
@@ -2782,3 +2784,13 @@ class ReprocessarEmailsPendentesTest(TestCase):
     def test_sem_pendentes_nao_faz_nada(self):
         self._run()
         self.assertEqual(len(mail.outbox), 0)
+
+    def test_erro_no_delete_nao_vira_falha_de_envio(self):
+        p = self._pendente(tentativas=1)
+        with patch.object(EmailPendente, "delete", side_effect=Exception("db caiu")):
+            with self.assertRaises(Exception):
+                self._run()
+        p.refresh_from_db()
+        self.assertEqual(p.tentativas, 1)
+        self.assertEqual(p.ultimo_erro, "")
+        self.assertEqual(len(mail.outbox), 1)

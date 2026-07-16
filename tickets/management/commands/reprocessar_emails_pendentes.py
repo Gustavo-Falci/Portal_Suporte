@@ -51,8 +51,6 @@ class Command(BaseCommand):
             )
             email.content_subtype = "html"
             email.send()
-            pendente.delete()
-            return True
 
         except Exception as e:
             pendente.tentativas += 1
@@ -66,3 +64,8 @@ class Command(BaseCommand):
                 f"(tentativa {pendente.tentativas}): {e}"
             )
             return False
+
+        # Fora do try: o e-mail já saiu. Se o delete falhar, é erro de banco e
+        # deve estourar como tal — não pode virar "falha de envio" no ultimo_erro.
+        pendente.delete()
+        return True
