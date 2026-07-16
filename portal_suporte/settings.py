@@ -224,6 +224,11 @@ EMAIL_PORT = 465
 EMAIL_USE_TLS = False
 EMAIL_USE_SSL = True
 
+# Sem timeout explícito, um SMTP que aceita conexão mas não responde trava o
+# processo e o cron do reprocessar_emails_pendentes empilha. 30s = mesmo valor
+# usado nas chamadas ao Maximo.
+EMAIL_TIMEOUT = 30
+
 # Pega do .env
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')   
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')

@@ -2821,3 +2821,43 @@ class ReprocessarEmailsPendentesTest(TestCase):
         self._run()
         self.assertEqual(len(mail.outbox), 0)
         self.assertEqual(EmailPendente.objects.count(), 1)
+
+    def test_teto_de_50_por_execucao(self):
+        for i in range(51):
+            self._pendente(f"u{i}@x.com")
+        self._run()
+        self.assertEqual(len(mail.outbox), 50)
+        self.assertEqual(EmailPendente.objects.count(), 1)
+
+    def test_abre_uma_conexao_smtp_para_o_lote_inteiro(self):
+        for i in range(3):
+            self._pendente(f"u{i}@x.com")
+        conexao = mail.get_connection(
+            backend="django.core.mail.backends.locmem.EmailBackend"
+        )
+        with patch(
+            "tickets.management.commands.reprocessar_emails_pendentes.get_connection",
+            return_value=conexao,
+        ):
+            with patch.object(conexao, "open", return_value=True) as mock_open:
+                self._run()
+        self.assertEqual(mock_open.call_count, 1)
+        self.assertEqual(len(mail.outbox), 3)
+
+    def test_smtp_fora_do_ar_nao_toca_nas_linhas(self):
+        p = self._pendente(tentativas=1)
+        conexao = mail.get_connection(
+            backend="django.core.mail.backends.locmem.EmailBackend"
+        )
+        with patch(
+            "tickets.management.commands.reprocessar_emails_pendentes.get_connection",
+            return_value=conexao,
+        ):
+            with patch.object(
+                conexao, "open", side_effect=Exception("[Errno 111] Connection refused")
+            ):
+                self._run()
+        p.refresh_from_db()
+        self.assertEqual(p.tentativas, 1)
+        self.assertFalse(p.desistiu)
+        self.assertEqual(len(mail.outbox), 0)
