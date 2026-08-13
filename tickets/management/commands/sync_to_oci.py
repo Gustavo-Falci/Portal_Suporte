@@ -2,12 +2,12 @@ import logging
 import os
 import boto3
 from botocore.config import Config
-from django.core.management.base import BaseCommand
+from tickets.management.base import ComandoPortal
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-class Command(BaseCommand):
+class Command(ComandoPortal):
     help = 'Sincroniza a pasta media local com o Oracle Cloud Object Storage (OCI)'
 
     def handle(self, *args, **kwargs):

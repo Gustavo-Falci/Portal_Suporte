@@ -3,7 +3,7 @@ import logging
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
-from django.core.management.base import BaseCommand
+from tickets.management.base import ComandoPortal
 from django.conf import settings
 
 from tickets.models import Ticket
@@ -12,7 +12,7 @@ from tickets.management.commands.sincronizar_maximo import Command as SyncComman
 logger = logging.getLogger(__name__)
 
 
-class Command(BaseCommand):
+class Command(ComandoPortal):
     help = (
         "Audita (somente leitura) vínculos suspeitos entre tickets locais e SRs "
         "do Maximo. Sinaliza tickets cujo SR vinculado tem reportdate anterior à "

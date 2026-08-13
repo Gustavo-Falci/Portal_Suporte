@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
-from django.core.management.base import BaseCommand
+from tickets.management.base import ComandoPortal
 from django.utils import timezone
 
 from tickets.models import EmailPendente
@@ -20,7 +20,7 @@ PRAZO_DESISTENCIA = timedelta(hours=72)
 TETO_POR_EXECUCAO = 50
 
 
-class Command(BaseCommand):
+class Command(ComandoPortal):
     help = (
         "Reenvia os e-mails de notificação que falharam (EmailPendente). "
         "Roda no cron a cada 5 min; a linha é apagada quando o envio dá certo."

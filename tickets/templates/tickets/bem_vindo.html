@@ -15,12 +15,24 @@
                 <h1 class="h3 fw-bold mb-1 text-truncate">Olá, {{ primeiro_nome }}!</h1>
                 <p class="text-muted mb-0">Visão geral dos seus chamados.</p>
             </div>
+            {% if manutencao %}
+            {# Manutenção: botão desabilitado. O bloqueio de verdade está na view. #}
+            <button type="button" class="btn btn-secondary shadow-sm px-4 py-2 d-none d-md-inline-block" disabled
+                    title="Indisponível durante a manutenção">
+                <i class="fa-solid fa-plus me-2"></i>Novo Ticket
+            </button>
+            <button type="button" class="btn btn-secondary shadow-sm btn-icon-square d-md-none align-self-start" disabled
+                    aria-label="Novo Ticket indisponível" title="Indisponível durante a manutenção">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+            {% else %}
             <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-primary shadow-sm px-4 py-2 d-none d-md-inline-block">
                 <i class="fa-solid fa-plus me-2"></i>Novo Ticket
             </a>
             <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-primary shadow-sm btn-icon-square d-md-none align-self-start" aria-label="Novo Ticket" title="Novo Ticket">
                 <i class="fa-solid fa-plus"></i>
             </a>
+            {% endif %}
         </div>
 
         <div class="row g-4 mb-5">

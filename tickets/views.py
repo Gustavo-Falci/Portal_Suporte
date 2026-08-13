@@ -10,7 +10,10 @@ from django.http import (
 )
 from django.contrib import messages
 from django.urls import reverse
-from .models import Ticket, TicketInteracao, Cliente, Notificacao, MAXIMO_STATUS_CHOICES, TicketAnexo, InteracaoAnexo
+from .models import (
+    Ticket, TicketInteracao, Cliente, Notificacao, MAXIMO_STATUS_CHOICES,
+    TicketAnexo, InteracaoAnexo, ModoManutencao,
+)
 from .forms import TicketForm, TicketInteracaoForm
 from django.db.models import Q, QuerySet
 from django.db import transaction
@@ -301,6 +304,20 @@ def _integrar_maximo_criacao(request: HttpRequest, ticket: Ticket, todos_anexos:
 @login_required(login_url="/login/")
 @throttle(RATE_CRIAR)
 def criar_ticket(request: HttpRequest) -> HttpResponse:
+
+    # Modo de manutenção: bloqueia GET e POST. O POST precisa morrer AQUI,
+    # antes de qualquer save — a página só esconder o form não impede um
+    # submit direto (aba aberta antes da manutenção, curl, botão de voltar).
+    manutencao = ModoManutencao.objects.filter(pk=1, ativo=True).first()
+    if manutencao:
+        if request.method == "POST":
+            logger.warning(
+                f"Criação de ticket BLOQUEADA (manutenção) user={request.user.username}"
+            )
+        # Erro inline: a página suprime o bloco messages de propósito.
+        return render(
+            request, "tickets/criar_ticket.html", {"bloqueio_manutencao": manutencao}
+        )
 
     if request.method == "POST":
         form = TicketForm(request.POST, request.FILES, user=request.user)

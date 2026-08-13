@@ -1,6 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Cliente, Ambiente, Area, Ticket, TicketInteracao, Notificacao, TicketAnexo, InteracaoAnexo
+from django.utils import timezone
+from .models import (
+    Cliente, Ambiente, Area, Ticket, TicketInteracao, Notificacao, TicketAnexo,
+    InteracaoAnexo, ModoManutencao,
+)
 
 # Customização do Cabeçalho
 admin.site.site_header = "Portal de Suporte | Administração"
@@ -195,3 +199,34 @@ class NotificacaoAdmin(admin.ModelAdmin):
     list_filter = ("lida", "tipo")
     search_fields = ("destinatario__username", "mensagem")
     list_select_related = ("destinatario",)
+
+
+@admin.register(ModoManutencao)
+class ModoManutencaoAdmin(admin.ModelAdmin):
+
+    """Singleton: sempre uma linha só, sem botão de adicionar nem de apagar."""
+
+    list_display = ("__str__", "mensagem", "previsao_retorno", "ativado_em", "ativado_por")
+    readonly_fields = ("ativado_em", "ativado_por")
+    fields = ("ativo", "mensagem", "previsao_retorno", "ativado_em", "ativado_por")
+
+    def has_add_permission(self, request):
+        # A linha é criada sob demanda por get_solo(); nunca uma segunda.
+        return not ModoManutencao.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        # Garante que a tela de lista já mostre a linha na primeira visita.
+        ModoManutencao.get_solo()
+        return super().get_queryset(request).select_related("ativado_por")
+
+    def save_model(self, request, obj, form, change):
+        # Carimba quem ligou. Só quando a transição é desligado -> ligado.
+        if obj.ativo and "ativo" in form.changed_data:
+            obj.ativado_em = timezone.now()
+            obj.ativado_por = request.user
+        elif not obj.ativo:
+            obj.previsao_retorno = None
+        super().save_model(request, obj, form, change)

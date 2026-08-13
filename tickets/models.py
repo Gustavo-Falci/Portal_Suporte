@@ -474,6 +474,84 @@ class Notificacao(models.Model):
         return f"{self.titulo} - {self.destinatario}"
 
 
+class ModoManutencao(models.Model):
+
+    """
+    Chave única (singleton, pk=1) que liga/desliga o modo de manutenção.
+
+    Fica no banco — e não em variável de ambiente — para ser ligada pelo admin
+    ou pelo comando `modo_manutencao` sem redeploy nem restart dos workers do
+    gunicorn (que leem o ambiente só no boot).
+
+    Com `ativo=True`: banner em todas as páginas, criação de ticket bloqueada
+    e os comandos de cron (sincronização, e-mail, OCI) abortam no início.
+    Leitura de tickets e chat continuam funcionando.
+    """
+
+    MENSAGEM_PADRAO = (
+        "O portal está em manutenção. A abertura de novos tickets está "
+        "temporariamente indisponível."
+    )
+
+    ativo = models.BooleanField(default=False)
+    mensagem = models.CharField(max_length=255, default=MENSAGEM_PADRAO)
+    previsao_retorno = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Opcional. Exibida no aviso quando preenchida.",
+    )
+
+    ativado_em = models.DateTimeField(null=True, blank=True)
+    ativado_por = models.ForeignKey(
+        Cliente,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="manutencoes_ativadas",
+    )
+
+    class Meta:
+        verbose_name = "Modo de manutenção"
+        verbose_name_plural = "Modo de manutenção"
+
+    def __str__(self):
+        return "Manutenção ATIVA" if self.ativo else "Manutenção desligada"
+
+    def save(self, *args, **kwargs):
+        # Singleton: qualquer save escreve sempre na mesma linha.
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        # A linha é a configuração; apagar deixaria o portal sem estado.
+        raise NotImplementedError("ModoManutencao é singleton e não pode ser apagado.")
+
+    @classmethod
+    def get_solo(cls) -> "ModoManutencao":
+        """Devolve a linha única, criando-a desligada na primeira chamada."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @classmethod
+    def esta_ativo(cls) -> bool:
+        """True se o modo está ligado. Não cria a linha (usado em hot path)."""
+        return cls.objects.filter(pk=1, ativo=True).exists()
+
+    def ligar(self, mensagem: str = "", por: Cliente | None = None,
+              previsao=None) -> None:
+        self.ativo = True
+        self.mensagem = mensagem or self.MENSAGEM_PADRAO
+        self.previsao_retorno = previsao
+        self.ativado_em = timezone.now()
+        self.ativado_por = por
+        self.save()
+
+    def desligar(self) -> None:
+        self.ativo = False
+        self.previsao_retorno = None
+        self.save(update_fields=["ativo", "previsao_retorno"])
+
+
 class EmailPendente(models.Model):
 
     """
