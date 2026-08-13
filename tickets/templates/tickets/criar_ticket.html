@@ -12,6 +12,28 @@
     <div class="card">
         <div class="card-body">
 
+            {% if bloqueio_manutencao %}
+            {# Manutenção ligada: o form nem é renderizado. A view também recusa
+               o POST, então uma aba antiga não consegue criar ticket. #}
+            <div class="text-center py-4">
+                <i class="fa-solid fa-screwdriver-wrench fa-2x text-warning mb-3"></i>
+                <h3 class="h5 fw-bold">Abertura de tickets temporariamente indisponível</h3>
+                <p class="text-muted mb-1">{{ bloqueio_manutencao.mensagem }}</p>
+                {% if bloqueio_manutencao.previsao_retorno %}
+                <p class="text-muted small mb-3">
+                    Previsão de retorno: {{ bloqueio_manutencao.previsao_retorno|date:"d/m/Y H:i" }}.
+                </p>
+                {% endif %}
+                <p class="small mb-4">
+                    Se for urgente, contate o suporte por telefone ou pelo e-mail
+                    <a href="mailto:suportebr@itconsol.com" class="fw-bold text-decoration-none">suportebr@itconsol.com</a>.
+                </p>
+                <a href="{% url 'tickets:pagina_inicial' %}" class="btn btn-outline-secondary">
+                    Voltar ao início
+                </a>
+            </div>
+            {% else %}
+
             {% if erro_persistencia %}
             <div class="alert alert-danger d-flex align-items-center small mb-3" role="alert">
                 <i class="fa-solid fa-triangle-exclamation me-2"></i>
@@ -186,10 +208,12 @@
                 </div>
 
             </form>
+            {% endif %}
         </div>
     </div>
 </div>
 
+{% if not bloqueio_manutencao %}
 <script nonce="{{ request.csp_nonce }}">
     document.addEventListener('DOMContentLoaded', function() {
 
@@ -383,4 +407,5 @@
         });
     });
 </script>
+{% endif %}
 {% endblock %}

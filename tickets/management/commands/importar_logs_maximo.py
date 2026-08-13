@@ -3,7 +3,7 @@ import requests
 import re
 import urllib3
 import html
-from django.core.management.base import BaseCommand
+from tickets.management.base import ComandoPortal
 from django.conf import settings
 from django.utils.html import strip_tags
 from django.contrib.auth import get_user_model
@@ -17,7 +17,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-class Command(BaseCommand):
+class Command(ComandoPortal):
     help = 'Importa Worklogs do IBM Maximo para o Chat do Portal (Apenas CLIENTNOTE)'
 
     def handle(self, *args, **options):

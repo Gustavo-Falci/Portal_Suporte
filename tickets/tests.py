@@ -11,7 +11,8 @@ from django.core import mail
 from django.core.cache import cache
 from django.apps import apps as django_apps
 from .models import (
-    Ticket, TicketInteracao, Ambiente, Notificacao, Area, Cliente, EmailPendente
+    Ticket, TicketInteracao, Ambiente, Notificacao, Area, Cliente, EmailPendente,
+    ModoManutencao,
 )
 from .forms import TicketForm
 from .services import MaximoSenderService, NotificationService
@@ -2861,3 +2862,242 @@ class ReprocessarEmailsPendentesTest(TestCase):
         self.assertEqual(p.tentativas, 1)
         self.assertFalse(p.desistiu)
         self.assertEqual(len(mail.outbox), 0)
+
+
+from django.core.management.base import CommandError
+
+
+class ModoManutencaoModelTest(TestCase):
+    """Singleton: sempre pk=1, uma linha só."""
+
+    def test_get_solo_cria_desligado(self):
+        modo = ModoManutencao.get_solo()
+        self.assertEqual(modo.pk, 1)
+        self.assertFalse(modo.ativo)
+
+    def test_get_solo_nao_duplica(self):
+        ModoManutencao.get_solo()
+        ModoManutencao.get_solo()
+        self.assertEqual(ModoManutencao.objects.count(), 1)
+
+    def test_save_sempre_na_pk_1(self):
+        outro = ModoManutencao(ativo=True)
+        outro.save()
+        self.assertEqual(outro.pk, 1)
+        self.assertEqual(ModoManutencao.objects.count(), 1)
+
+    def test_delete_bloqueado(self):
+        modo = ModoManutencao.get_solo()
+        with self.assertRaises(NotImplementedError):
+            modo.delete()
+
+    def test_esta_ativo_reflete_estado(self):
+        self.assertFalse(ModoManutencao.esta_ativo())
+        ModoManutencao.get_solo().ligar()
+        self.assertTrue(ModoManutencao.esta_ativo())
+
+    def test_ligar_carimba_quem_e_quando(self):
+        user = Cliente.objects.create_user(
+            email="adm@itconsol.com", username="adm", password="123"
+        )
+        ModoManutencao.get_solo().ligar(mensagem="Janela do banco", por=user)
+        modo = ModoManutencao.get_solo()
+        self.assertTrue(modo.ativo)
+        self.assertEqual(modo.mensagem, "Janela do banco")
+        self.assertEqual(modo.ativado_por, user)
+        self.assertIsNotNone(modo.ativado_em)
+
+    def test_ligar_sem_mensagem_usa_padrao(self):
+        ModoManutencao.get_solo().ligar()
+        self.assertEqual(
+            ModoManutencao.get_solo().mensagem, ModoManutencao.MENSAGEM_PADRAO
+        )
+
+    def test_desligar_limpa_previsao(self):
+        modo = ModoManutencao.get_solo()
+        modo.ligar(previsao=timezone.now())
+        modo.desligar()
+        modo = ModoManutencao.get_solo()
+        self.assertFalse(modo.ativo)
+        self.assertIsNone(modo.previsao_retorno)
+
+
+class ModoManutencaoBannerTest(TestCase):
+    """Aviso aparece para logado e para anônimo (tela de login)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="user@acme.com", username="user", password="123", location="ACME",
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+
+    def test_sem_manutencao_nao_mostra_aviso(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("tickets:pagina_inicial"))
+        self.assertNotContains(resp, "Portal em manutenção")
+
+    def test_com_manutencao_mostra_aviso_para_logado(self):
+        ModoManutencao.get_solo().ligar(mensagem="Janela do banco")
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("tickets:pagina_inicial"))
+        self.assertContains(resp, "Portal em manutenção")
+        self.assertContains(resp, "Janela do banco")
+
+    def test_com_manutencao_mostra_aviso_no_login(self):
+        ModoManutencao.get_solo().ligar(mensagem="Janela do banco")
+        resp = self.client.get(reverse("tickets:login"))
+        self.assertContains(resp, "Portal em manutenção")
+
+    def test_contexto_expoe_none_quando_desligado(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("tickets:pagina_inicial"))
+        self.assertIsNone(resp.context["manutencao"])
+
+
+class ModoManutencaoCriarTicketTest(TestCase):
+    """Criação de ticket bloqueada em GET e POST durante a manutenção."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="abre@acme.com", username="abre", password="123",
+            location="ACME", person_id="P01",
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+        self.ambiente = Ambiente.objects.create(nome_ambiente="ERP", numero_ativo="009")
+        self.ambiente.clientes.add(self.user)
+        self.client.force_login(self.user)
+
+    def _post_valido(self):
+        data = {
+            "sumario": "Erro no ERP",
+            "descricao": "Trava ao salvar",
+            "prioridade": "2",
+            "ambiente": self.ambiente.id,
+            "documento_requisicao": SimpleUploadedFile(
+                "req.docx", b"PK\x03\x04docxbytes",
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument"
+                    ".wordprocessingml.document"
+                ),
+            ),
+        }
+        return self.client.post(reverse("tickets:criar_ticket"), data)
+
+    def test_get_esconde_form_e_mostra_aviso(self):
+        ModoManutencao.get_solo().ligar(mensagem="Janela do banco")
+        resp = self.client.get(reverse("tickets:criar_ticket"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "temporariamente indisponível")
+        self.assertNotContains(resp, 'id="ticketForm"')
+
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo")
+    @patch("tickets.views.MaximoSenderService.criar_sr")
+    def test_post_nao_cria_ticket(self, mock_criar, mock_email):
+        ModoManutencao.get_solo().ligar()
+        resp = self._post_valido()
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(Ticket.objects.exists())
+        mock_criar.assert_not_called()
+        mock_email.assert_not_called()
+
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo")
+    @patch("tickets.views.MaximoSenderService.criar_sr")
+    def test_desligado_volta_a_criar(self, mock_criar, mock_email):
+        mock_criar.return_value = {"ticketid": "2277", "href": "https://mx/_ABC--"}
+        modo = ModoManutencao.get_solo()
+        modo.ligar()
+        modo.desligar()
+        resp = self._post_valido()
+        self.assertRedirects(resp, reverse("tickets:ticket_sucesso"))
+        self.assertTrue(Ticket.objects.filter(sumario="Erro no ERP").exists())
+
+    def test_botao_novo_ticket_desabilitado_na_home(self):
+        ModoManutencao.get_solo().ligar()
+        resp = self.client.get(reverse("tickets:pagina_inicial"))
+        url_criar = reverse("tickets:criar_ticket")
+        self.assertNotContains(resp, f'href="{url_criar}"')
+
+
+class ModoManutencaoCommandsTest(TestCase):
+    """Comandos de cron abortam com a manutenção ligada."""
+
+    def _run(self, nome, **kwargs):
+        out = StringIO()
+        call_command(nome, stdout=out, **kwargs)
+        return out.getvalue()
+
+    @patch("tickets.management.commands.sincronizar_maximo.Command.handle")
+    def test_comando_nao_roda_com_manutencao(self, mock_handle):
+        ModoManutencao.get_solo().ligar()
+        saida = self._run("sincronizar_maximo")
+        mock_handle.assert_not_called()
+        self.assertIn("Modo de manutenção ativo", saida)
+
+    @patch("tickets.management.commands.sincronizar_maximo.Command.handle", return_value=None)
+    def test_comando_roda_sem_manutencao(self, mock_handle):
+        self._run("sincronizar_maximo")
+        mock_handle.assert_called_once()
+
+    @patch("tickets.management.commands.sincronizar_maximo.Command.handle", return_value=None)
+    def test_flag_ignorar_forca_execucao(self, mock_handle):
+        ModoManutencao.get_solo().ligar()
+        self._run("sincronizar_maximo", ignorar_manutencao=True)
+        mock_handle.assert_called_once()
+
+    def test_reprocessar_emails_nao_envia_com_manutencao(self):
+        EmailPendente.objects.create(
+            destinatario="a@b.com", assunto="Assunto", corpo_html="<p>x</p>",
+        )
+        ModoManutencao.get_solo().ligar()
+        self._run("reprocessar_emails_pendentes")
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(EmailPendente.objects.count(), 1)
+
+
+class ModoManutencaoCommandControleTest(TestCase):
+    """O comando modo_manutencao roda mesmo com a manutenção ligada."""
+
+    def _run(self, *args, **kwargs):
+        out = StringIO()
+        call_command("modo_manutencao", *args, stdout=out, **kwargs)
+        return out.getvalue()
+
+    def test_ligar(self):
+        saida = self._run("ligar", "--mensagem", "Janela do banco")
+        self.assertTrue(ModoManutencao.esta_ativo())
+        self.assertEqual(ModoManutencao.get_solo().mensagem, "Janela do banco")
+        self.assertIn("LIGADO", saida)
+
+    def test_desligar_funciona_com_modo_ligado(self):
+        ModoManutencao.get_solo().ligar()
+        saida = self._run("desligar")
+        self.assertFalse(ModoManutencao.esta_ativo())
+        self.assertIn("DESLIGADO", saida)
+
+    def test_status_nao_altera_estado(self):
+        saida = self._run("status")
+        self.assertIn("desligado", saida)
+        self.assertFalse(ModoManutencao.esta_ativo())
+
+    def test_ligar_com_previsao_e_autor(self):
+        user = Cliente.objects.create_user(
+            email="adm@itconsol.com", username="adm", password="123"
+        )
+        self._run("ligar", "--previsao", "2026-08-13T22:00", "--por", "adm")
+        modo = ModoManutencao.get_solo()
+        self.assertEqual(modo.ativado_por, user)
+        self.assertIsNotNone(modo.previsao_retorno)
+        self.assertFalse(timezone.is_naive(modo.previsao_retorno))
+
+    def test_previsao_invalida_falha(self):
+        with self.assertRaises(CommandError):
+            self._run("ligar", "--previsao", "ontem")
+
+    def test_usuario_inexistente_falha(self):
+        with self.assertRaises(CommandError):
+            self._run("ligar", "--por", "ninguem")
+

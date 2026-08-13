@@ -1,5 +1,5 @@
 from django.http import HttpRequest
-from .models import Cliente, Notificacao
+from .models import Cliente, ModoManutencao, Notificacao
 
 
 def dados_notificacoes(user: Cliente) -> dict:
@@ -33,3 +33,15 @@ def notificacoes_usuario(request: HttpRequest) -> dict:
         return dados_notificacoes(request.user)
 
     return {}
+
+
+def modo_manutencao(request: HttpRequest) -> dict:
+
+    """
+    Disponibiliza o aviso de manutenção em todos os templates.
+
+    Roda também para anônimo (de propósito): o aviso precisa aparecer na tela
+    de login. Sai `None` quando desligado — 1 query barata por página.
+    """
+    manutencao = ModoManutencao.objects.filter(pk=1, ativo=True).first()
+    return {"manutencao": manutencao}

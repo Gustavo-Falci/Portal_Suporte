@@ -1,0 +1,15 @@
+{# Aviso de manutenção. Renderiza só quando o context processor
+   tickets.context_processors.modo_manutencao devolve a linha ativa. #}
+{% if manutencao %}
+<div class="alert alert-warning border-0 rounded-0 mb-0 py-2 text-center shadow-sm" role="alert">
+    {# Font Awesome: é o único icon set carregado nas duas bases (base_no_nav não tem bootstrap-icons). #}
+    <i class="fa-solid fa-triangle-exclamation me-2"></i>
+    <strong>Portal em manutenção.</strong>
+    {{ manutencao.mensagem }}
+    {% if manutencao.previsao_retorno %}
+        <span class="d-block d-md-inline ms-md-1">
+            Previsão de retorno: {{ manutencao.previsao_retorno|date:"d/m/Y H:i" }}.
+        </span>
+    {% endif %}
+</div>
+{% endif %}

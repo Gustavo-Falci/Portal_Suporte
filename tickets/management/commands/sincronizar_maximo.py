@@ -4,7 +4,7 @@ from requests.adapters import HTTPAdapter, Retry
 from datetime import datetime, timedelta
 from django.utils import timezone
 
-from django.core.management.base import BaseCommand
+from tickets.management.base import ComandoPortal
 from django.conf import settings
 from tickets.models import Ticket
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # Guarda de match por texto
 MATCH_BUFFER = timedelta(minutes=5)          # tolera clock skew portal<->Maximo
 
-class Command(BaseCommand):
+class Command(ComandoPortal):
     help = 'Sincroniza status, ID e OWNER dos tickets com o IBM Maximo'
 
     def handle(self, *args, **options):

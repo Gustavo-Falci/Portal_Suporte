@@ -15,9 +15,16 @@
             </p>
         </div>
         <div class="col-md-4 text-md-end text-start mt-3 mt-md-0">
+            {% if manutencao %}
+            <button type="button" class="btn btn-secondary d-inline-flex align-items-center" style="border: none; padding: 10px 20px;"
+                    disabled title="Indisponível durante a manutenção">
+                <span class="me-2" style="font-size: 1.2rem;">+</span> Novo Ticket
+            </button>
+            {% else %}
             <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-primary d-inline-flex align-items-center" style="background-color: var(--ibm-blue-60); border: none; padding: 10px 20px;">
                 <span class="me-2" style="font-size: 1.2rem;">+</span> Novo Ticket
             </a>
+            {% endif %}
         </div>
     </div>
 
