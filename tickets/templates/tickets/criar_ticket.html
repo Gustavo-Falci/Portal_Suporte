@@ -13,8 +13,7 @@
         <div class="card-body">
 
             {% if bloqueio_manutencao %}
-            {# Manutenção ligada: o form nem é renderizado. A view também recusa
-               o POST, então uma aba antiga não consegue criar ticket. #}
+            {# Manutenção ligada: o form nem é renderizado. A view também recusa o POST, então uma aba antiga não consegue criar ticket. #}
             <div class="text-center py-4">
                 <i class="fa-solid fa-screwdriver-wrench fa-2x text-warning mb-3"></i>
                 <h3 class="h5 fw-bold">Abertura de tickets temporariamente indisponível</h3>
