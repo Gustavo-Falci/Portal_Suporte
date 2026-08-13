@@ -85,8 +85,7 @@
     </nav>
 
     <main class="container mb-5 main-content">
-        {# Fora do bloco messages: páginas que suprimem messages (criar_ticket)
-           continuam mostrando o aviso de manutenção. #}
+        {# Fora do bloco messages: páginas que suprimem messages (criar_ticket) continuam mostrando o aviso de manutenção. #}
         {% include "tickets/partials/banner_manutencao.html" %}
         {% block messages %}
             <div class="container mt-3">

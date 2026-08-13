@@ -2950,6 +2950,16 @@ class ModoManutencaoBannerTest(TestCase):
         resp = self.client.get(reverse("tickets:login"))
         self.assertContains(resp, "Portal em manutenção")
 
+    def test_banner_do_login_fica_fora_do_container(self):
+        # O login transforma `body > .container` em flex centralizado: banner
+        # dentro dele empurra o card de login para o lado.
+        ModoManutencao.get_solo().ligar()
+        corpo = self.client.get(reverse("tickets:login")).content.decode()
+        self.assertLess(
+            corpo.index("Portal em manutenção"),
+            corpo.index('<div class="container mt-4">'),
+        )
+
     def test_contexto_expoe_none_quando_desligado(self):
         self.client.force_login(self.user)
         resp = self.client.get(reverse("tickets:pagina_inicial"))
@@ -3100,4 +3110,48 @@ class ModoManutencaoCommandControleTest(TestCase):
     def test_usuario_inexistente_falha(self):
         with self.assertRaises(CommandError):
             self._run("ligar", "--por", "ninguem")
+
+
+class TemplateSemComentarioVazadoTest(TestCase):
+    """Regressão: {# #} do Django é de UMA linha só.
+
+    Comentário quebrado em duas linhas não casa com o lexer e o resto vaza
+    como texto na página (aconteceu no banner de manutenção: empurrou o card
+    de login para o lado e imprimiu '... #}' na tela).
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Cliente.objects.create_user(
+            email="tpl@acme.com", username="tpl", password="123", location="ACME",
+        )
+        self.user.precisa_trocar_senha = False
+        self.user.save()
+
+    def _sem_vazamento(self, resp):
+        corpo = resp.content.decode()
+        self.assertNotIn("#}", corpo)
+        self.assertNotIn("{#", corpo)
+
+    def test_login_sem_manutencao(self):
+        self._sem_vazamento(self.client.get(reverse("tickets:login")))
+
+    def test_login_com_manutencao(self):
+        ModoManutencao.get_solo().ligar()
+        self._sem_vazamento(self.client.get(reverse("tickets:login")))
+
+    def test_home_com_manutencao(self):
+        ModoManutencao.get_solo().ligar()
+        self.client.force_login(self.user)
+        self._sem_vazamento(self.client.get(reverse("tickets:pagina_inicial")))
+
+    def test_criar_ticket_com_manutencao(self):
+        ModoManutencao.get_solo().ligar()
+        self.client.force_login(self.user)
+        self._sem_vazamento(self.client.get(reverse("tickets:criar_ticket")))
+
+    def test_meus_tickets_com_manutencao(self):
+        ModoManutencao.get_solo().ligar()
+        self.client.force_login(self.user)
+        self._sem_vazamento(self.client.get(reverse("tickets:meus_tickets")))
 
