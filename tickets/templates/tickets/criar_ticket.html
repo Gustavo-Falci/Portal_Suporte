@@ -33,6 +33,14 @@
             </div>
             {% else %}
 
+            {% if manutencao %}
+            {# Chegou aqui com manutenção ligada = superusuário. Aviso de que o form está liberado só para ele. #}
+            <div class="alert alert-warning d-flex align-items-center small mb-3" role="alert">
+                <i class="fa-solid fa-screwdriver-wrench me-2"></i>
+                <span>Portal em manutenção. A abertura de tickets está liberada apenas para administradores.</span>
+            </div>
+            {% endif %}
+
             {% if erro_persistencia %}
             <div class="alert alert-danger d-flex align-items-center small mb-3" role="alert">
                 <i class="fa-solid fa-triangle-exclamation me-2"></i>

@@ -42,6 +42,11 @@ def modo_manutencao(request: HttpRequest) -> dict:
 
     Roda também para anônimo (de propósito): o aviso precisa aparecer na tela
     de login. Sai `None` quando desligado — 1 query barata por página.
+
+    `manutencao_bloqueia_criacao` separa "há manutenção" (banner, para todos)
+    de "este usuário não pode abrir ticket agora": o superusuário continua
+    podendo criar durante a janela, para validar o portal antes de liberar.
     """
     manutencao = ModoManutencao.objects.filter(pk=1, ativo=True).first()
-    return {"manutencao": manutencao}
+    bloqueia = bool(manutencao) and not getattr(request.user, "is_superuser", False)
+    return {"manutencao": manutencao, "manutencao_bloqueia_criacao": bloqueia}

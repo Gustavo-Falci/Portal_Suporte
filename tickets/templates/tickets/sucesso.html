@@ -62,7 +62,7 @@
                     <i class="fa-solid fa-eye me-2"></i>Acompanhar Ticket
                 </a>
                 <div class="d-flex gap-2">
-                    {% if not manutencao %}
+                    {% if not manutencao_bloqueia_criacao %}
                     <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-outline-secondary flex-fill">
                         <i class="fa-solid fa-plus me-2"></i>Abrir Outro
                     </a>
@@ -77,7 +77,7 @@
                 O ticket foi criado e enviado para o suporte IT Consol.
             </p>
             <div class="d-grid gap-2 col-10 mx-auto">
-                {% if not manutencao %}
+                {% if not manutencao_bloqueia_criacao %}
                 <a href="{% url 'tickets:criar_ticket' %}" class="btn btn-primary">
                     <i class="fa-solid fa-plus me-2"></i>Abrir Outro Ticket
                 </a>

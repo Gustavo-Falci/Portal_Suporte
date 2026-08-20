@@ -15,8 +15,8 @@
                 <h1 class="h3 fw-bold mb-1 text-truncate">Olá, {{ primeiro_nome }}!</h1>
                 <p class="text-muted mb-0">Visão geral dos seus chamados.</p>
             </div>
-            {% if manutencao %}
-            {# Manutenção: botão desabilitado. O bloqueio de verdade está na view. #}
+            {% if manutencao_bloqueia_criacao %}
+            {# Manutenção: botão desabilitado. O bloqueio de verdade está na view. Superusuário continua com o botão ativo. #}
             <button type="button" class="btn btn-secondary shadow-sm px-4 py-2 d-none d-md-inline-block" disabled
                     title="Indisponível durante a manutenção">
                 <i class="fa-solid fa-plus me-2"></i>Novo Ticket

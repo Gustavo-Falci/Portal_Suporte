@@ -3031,6 +3031,74 @@ class ModoManutencaoCriarTicketTest(TestCase):
         url_criar = reverse("tickets:criar_ticket")
         self.assertNotContains(resp, f'href="{url_criar}"')
 
+class ModoManutencaoSuperuserTest(TestCase):
+    """Durante a manutenção só o superusuário continua abrindo ticket."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = Cliente.objects.create_superuser(
+            email="admin@itconsol.com", username="admin", password="123",
+            location="ITC", person_id="P99",
+        )
+        self.admin.precisa_trocar_senha = False
+        self.admin.save()
+        self.ambiente = Ambiente.objects.create(nome_ambiente="ERP", numero_ativo="009")
+        self.ambiente.clientes.add(self.admin)
+        self.client.force_login(self.admin)
+        ModoManutencao.get_solo().ligar(mensagem="Janela do banco")
+
+    def _post_valido(self):
+        data = {
+            "sumario": "Teste na janela",
+            "descricao": "Validando o portal",
+            "prioridade": "2",
+            "ambiente": self.ambiente.id,
+            "documento_requisicao": SimpleUploadedFile(
+                "req.docx", b"PKdocxbytes",
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument"
+                    ".wordprocessingml.document"
+                ),
+            ),
+        }
+        return self.client.post(reverse("tickets:criar_ticket"), data)
+
+    def test_get_mostra_form_com_aviso(self):
+        resp = self.client.get(reverse("tickets:criar_ticket"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'id="ticketForm"')
+        self.assertContains(resp, "liberada apenas para administradores")
+        self.assertNotContains(resp, "Abertura de tickets temporariamente indispon")
+
+    @patch("tickets.views.MaximoEmailService.enviar_ticket_maximo")
+    @patch("tickets.views.MaximoSenderService.criar_sr")
+    def test_post_cria_ticket(self, mock_criar, mock_email):
+        mock_criar.return_value = {"ticketid": "2277", "href": "https://mx/_ABC--"}
+        resp = self._post_valido()
+        self.assertRedirects(resp, reverse("tickets:ticket_sucesso"))
+        self.assertTrue(Ticket.objects.filter(sumario="Teste na janela").exists())
+
+    def test_botao_novo_ticket_continua_ativo_na_home(self):
+        resp = self.client.get(reverse("tickets:pagina_inicial"))
+        self.assertContains(resp, f'href="{reverse("tickets:criar_ticket")}"')
+
+    def test_banner_continua_visivel_para_o_admin(self):
+        resp = self.client.get(reverse("tickets:pagina_inicial"))
+        self.assertContains(resp, "Portal em manuten")
+
+    def test_consultor_is_staff_continua_bloqueado(self):
+        consultor = Cliente.objects.create_user(
+            email="cons@itconsol.com", username="cons", password="123",
+            location="ITC", person_id="P98", is_staff=True,
+        )
+        consultor.precisa_trocar_senha = False
+        consultor.save()
+        self.client.force_login(consultor)
+        resp = self.client.get(reverse("tickets:criar_ticket"))
+        self.assertContains(resp, "temporariamente indispon")
+        self.assertNotContains(resp, 'id="ticketForm"')
+
+
 
 class ModoManutencaoCommandsTest(TestCase):
     """Comandos de cron abortam com a manutenção ligada."""

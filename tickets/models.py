@@ -484,8 +484,9 @@ class ModoManutencao(models.Model):
     gunicorn (que leem o ambiente só no boot).
 
     Com `ativo=True`: banner em todas as páginas, criação de ticket bloqueada
-    e os comandos de cron (sincronização, e-mail, OCI) abortam no início.
-    Leitura de tickets e chat continuam funcionando.
+    (exceto para superusuário, que continua abrindo ticket para validar o
+    portal na janela) e os comandos de cron (sincronização, e-mail, OCI)
+    abortam no início. Leitura de tickets e chat continuam funcionando.
     """
 
     MENSAGEM_PADRAO = (

@@ -308,8 +308,11 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
     # Modo de manutenção: bloqueia GET e POST. O POST precisa morrer AQUI,
     # antes de qualquer save — a página só esconder o form não impede um
     # submit direto (aba aberta antes da manutenção, curl, botão de voltar).
+    # Exceção: superusuário continua abrindo ticket na janela (validação do
+    # portal antes de liberar). is_staff NÃO serve — no portal ele marca
+    # consultor, não admin.
     manutencao = ModoManutencao.objects.filter(pk=1, ativo=True).first()
-    if manutencao:
+    if manutencao and not request.user.is_superuser:
         if request.method == "POST":
             logger.warning(
                 f"Criação de ticket BLOQUEADA (manutenção) user={request.user.username}"
@@ -317,6 +320,12 @@ def criar_ticket(request: HttpRequest) -> HttpResponse:
         # Erro inline: a página suprime o bloco messages de propósito.
         return render(
             request, "tickets/criar_ticket.html", {"bloqueio_manutencao": manutencao}
+        )
+
+    if manutencao and request.method == "POST":
+        logger.info(
+            f"Ticket criado DURANTE manutenção por superusuário "
+            f"(user={request.user.username})."
         )
 
     if request.method == "POST":
