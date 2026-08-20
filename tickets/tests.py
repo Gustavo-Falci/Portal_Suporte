@@ -12,7 +12,7 @@ from django.core.cache import cache
 from django.apps import apps as django_apps
 from .models import (
     Ticket, TicketInteracao, Ambiente, Notificacao, Area, Cliente, EmailPendente,
-    ModoManutencao,
+    ModoManutencao, TicketAnexo, InteracaoAnexo,
 )
 from .forms import TicketForm
 from .services import MaximoSenderService, NotificationService
@@ -3223,3 +3223,133 @@ class TemplateSemComentarioVazadoTest(TestCase):
         self.client.force_login(self.user)
         self._sem_vazamento(self.client.get(reverse("tickets:meus_tickets")))
 
+
+class RecriarSrMaximoCommandTest(TestCase):
+    """Recriação da SR no Maximo (restore apagou as SRs pós-13/08)."""
+
+    def setUp(self):
+        self.user = Cliente.objects.create_user(
+            email="dono@acme.com", username="dono", password="123",
+            location="ACME", person_id="P42",
+        )
+        self.ambiente = Ambiente.objects.create(nome_ambiente="ERP", numero_ativo="009")
+        self.ticket = Ticket.objects.create(
+            cliente=self.user, sumario="Sistema inoperante",
+            descricao="Conforme print", prioridade="1",
+            ambiente=self.ambiente, maximo_id="9001",
+        )
+
+    def _run(self, *args):
+        out = StringIO()
+        call_command("recriar_sr_maximo", self.ticket.id, *args, stdout=out)
+        return out.getvalue()
+
+    @patch("tickets.services.MaximoSenderService._get_member_href", return_value=None)
+    @patch("tickets.services.MaximoSenderService.criar_sr")
+    def test_recria_e_regrava_maximo_id(self, mock_criar, mock_href):
+        mock_criar.return_value = {"ticketid": "12345", "href": "https://mx/_ABC--"}
+        saida = self._run()
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.maximo_id, "12345")
+        self.assertIn("9001 -> 12345", saida)
+        # Solicitante da SR nova continua o dono do ticket, não quem rodou.
+        self.assertEqual(mock_criar.call_args[0][1], self.user)
+
+    @patch("tickets.services.MaximoSenderService._get_member_href",
+           return_value="https://mx/_ABC--")
+    @patch("tickets.services.MaximoSenderService.criar_sr")
+    def test_pula_quando_sr_ainda_existe(self, mock_criar, mock_href):
+        saida = self._run()
+        mock_criar.assert_not_called()
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.maximo_id, "9001")
+        self.assertIn("ainda existe no Maximo", saida)
+
+    @patch("tickets.services.MaximoSenderService._get_member_href",
+           return_value="https://mx/_ABC--")
+    @patch("tickets.services.MaximoSenderService.criar_sr")
+    def test_forcar_recria_mesmo_com_sr_existente(self, mock_criar, mock_href):
+        mock_criar.return_value = {"ticketid": "12345", "href": "https://mx/_ABC--"}
+        self._run("--forcar")
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.maximo_id, "12345")
+
+    @patch("tickets.services.MaximoSenderService._get_member_href", return_value=None)
+    @patch("tickets.services.MaximoSenderService.criar_sr")
+    def test_dry_run_nao_envia_nem_salva(self, mock_criar, mock_href):
+        saida = self._run("--dry-run")
+        mock_criar.assert_not_called()
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.maximo_id, "9001")
+        self.assertIn("DRY-RUN", saida)
+
+    @patch("tickets.services.MaximoSenderService._get_member_href", return_value=None)
+    @patch("tickets.services.MaximoSenderService.criar_sr", return_value=None)
+    def test_falha_na_criacao_mantem_maximo_id(self, mock_criar, mock_href):
+        saida = self._run()
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.maximo_id, "9001")
+        self.assertIn("FALHA", saida)
+
+    @patch("tickets.services.MaximoSenderService.enviar_anexos", return_value=True)
+    @patch("tickets.services.MaximoSenderService.enviar_anexos_criacao", return_value=True)
+    @patch("tickets.services.MaximoSenderService.enviar_interacao", return_value=True)
+    @patch("tickets.services.MaximoSenderService._get_member_href", return_value=None)
+    @patch("tickets.services.MaximoSenderService.criar_sr")
+    def test_reenvia_anexos_e_worklogs(
+        self, mock_criar, mock_href, mock_wl, mock_anexos_criacao, mock_anexos_chat
+    ):
+        mock_criar.return_value = {
+            "ticketid": "12345",
+            "href": "https://mx/_ABC--",
+            "doclinks": {"href": "https://mx/_ABC--/doclinks"},
+        }
+        TicketAnexo.objects.create(
+            ticket=self.ticket,
+            arquivo=ContentFile(b"evidencia", name="print.png"),
+        )
+        i1 = TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.user, mensagem="primeira"
+        )
+        TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.user, mensagem="segunda"
+        )
+        InteracaoAnexo.objects.create(
+            interacao=i1, arquivo=ContentFile(b"doc", name="log.txt"),
+            maximo_doclink_id="antigo",
+        )
+
+        self._run()
+
+        # Anexos da abertura vão pelo href de doclinks devolvido na criação.
+        mock_anexos_criacao.assert_called_once()
+        self.assertEqual(
+            mock_anexos_criacao.call_args[0][0], "https://mx/_ABC--/doclinks"
+        )
+        # Chat reenviado em ordem cronológica.
+        self.assertEqual(mock_wl.call_count, 2)
+        mensagens = [c[0][1].mensagem for c in mock_wl.call_args_list]
+        self.assertEqual(mensagens, ["primeira", "segunda"])
+        # Anexos do chat reenviados (doclink_id antigo morreu com a SR).
+        mock_anexos_chat.assert_called_once()
+
+    @patch("tickets.services.MaximoSenderService.enviar_anexos_criacao")
+    @patch("tickets.services.MaximoSenderService.enviar_interacao")
+    @patch("tickets.services.MaximoSenderService._get_member_href", return_value=None)
+    @patch("tickets.services.MaximoSenderService.criar_sr")
+    def test_flags_desligam_anexos_e_worklogs(
+        self, mock_criar, mock_href, mock_wl, mock_anexos_criacao
+    ):
+        mock_criar.return_value = {
+            "ticketid": "12345", "href": "https://mx/_ABC--",
+            "doclinks": {"href": "https://mx/_ABC--/doclinks"},
+        }
+        TicketAnexo.objects.create(
+            ticket=self.ticket, arquivo=ContentFile(b"x", name="a.png")
+        )
+        TicketInteracao.objects.create(
+            ticket=self.ticket, autor=self.user, mensagem="oi"
+        )
+        self._run("--sem-anexos", "--sem-worklogs")
+        mock_anexos_criacao.assert_not_called()
+        mock_wl.assert_not_called()
