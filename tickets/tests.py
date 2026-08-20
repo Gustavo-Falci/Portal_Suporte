@@ -3224,6 +3224,11 @@ class TemplateSemComentarioVazadoTest(TestCase):
         self._sem_vazamento(self.client.get(reverse("tickets:meus_tickets")))
 
 
+CONSULTA_SR = (
+    "tickets.management.commands.recriar_sr_maximo.Command._consultar_sr"
+)
+
+
 class RecriarSrMaximoCommandTest(TestCase):
     """Recriação da SR no Maximo (restore apagou as SRs pós-13/08)."""
 
@@ -3244,7 +3249,7 @@ class RecriarSrMaximoCommandTest(TestCase):
         call_command("recriar_sr_maximo", self.ticket.id, *args, stdout=out)
         return out.getvalue()
 
-    @patch("tickets.services.MaximoSenderService._get_member_href", return_value=None)
+    @patch(CONSULTA_SR, return_value=None)
     @patch("tickets.services.MaximoSenderService.criar_sr")
     def test_recria_e_regrava_maximo_id(self, mock_criar, mock_href):
         mock_criar.return_value = {"ticketid": "12345", "href": "https://mx/_ABC--"}
@@ -3255,18 +3260,20 @@ class RecriarSrMaximoCommandTest(TestCase):
         # Solicitante da SR nova continua o dono do ticket, não quem rodou.
         self.assertEqual(mock_criar.call_args[0][1], self.user)
 
-    @patch("tickets.services.MaximoSenderService._get_member_href",
-           return_value="https://mx/_ABC--")
+    @patch(CONSULTA_SR, return_value={"ticketid": "9001", "description": "Sistema inoperante", "status": "NEW"})
     @patch("tickets.services.MaximoSenderService.criar_sr")
     def test_pula_quando_sr_ainda_existe(self, mock_criar, mock_href):
         saida = self._run()
         mock_criar.assert_not_called()
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.maximo_id, "9001")
-        self.assertIn("ainda existe no Maximo", saida)
+        self.assertIn("existe no Maximo", saida)
+        # Mostra a descrição da SR encontrada: depois do restore o número pode
+        # ter sido reaproveitado por outra SR.
+        self.assertIn("Sistema inoperante", saida)
+        self.assertIn("--forcar", saida)
 
-    @patch("tickets.services.MaximoSenderService._get_member_href",
-           return_value="https://mx/_ABC--")
+    @patch(CONSULTA_SR, return_value={"ticketid": "9001", "description": "Sistema inoperante", "status": "NEW"})
     @patch("tickets.services.MaximoSenderService.criar_sr")
     def test_forcar_recria_mesmo_com_sr_existente(self, mock_criar, mock_href):
         mock_criar.return_value = {"ticketid": "12345", "href": "https://mx/_ABC--"}
@@ -3274,7 +3281,7 @@ class RecriarSrMaximoCommandTest(TestCase):
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.maximo_id, "12345")
 
-    @patch("tickets.services.MaximoSenderService._get_member_href", return_value=None)
+    @patch(CONSULTA_SR, return_value=None)
     @patch("tickets.services.MaximoSenderService.criar_sr")
     def test_dry_run_nao_envia_nem_salva(self, mock_criar, mock_href):
         saida = self._run("--dry-run")
@@ -3283,7 +3290,7 @@ class RecriarSrMaximoCommandTest(TestCase):
         self.assertEqual(self.ticket.maximo_id, "9001")
         self.assertIn("DRY-RUN", saida)
 
-    @patch("tickets.services.MaximoSenderService._get_member_href", return_value=None)
+    @patch(CONSULTA_SR, return_value=None)
     @patch("tickets.services.MaximoSenderService.criar_sr", return_value=None)
     def test_falha_na_criacao_mantem_maximo_id(self, mock_criar, mock_href):
         saida = self._run()
@@ -3294,7 +3301,7 @@ class RecriarSrMaximoCommandTest(TestCase):
     @patch("tickets.services.MaximoSenderService.enviar_anexos", return_value=True)
     @patch("tickets.services.MaximoSenderService.enviar_anexos_criacao", return_value=True)
     @patch("tickets.services.MaximoSenderService.enviar_interacao", return_value=True)
-    @patch("tickets.services.MaximoSenderService._get_member_href", return_value=None)
+    @patch(CONSULTA_SR, return_value=None)
     @patch("tickets.services.MaximoSenderService.criar_sr")
     def test_reenvia_anexos_e_worklogs(
         self, mock_criar, mock_href, mock_wl, mock_anexos_criacao, mock_anexos_chat
@@ -3335,7 +3342,7 @@ class RecriarSrMaximoCommandTest(TestCase):
 
     @patch("tickets.services.MaximoSenderService.enviar_anexos_criacao")
     @patch("tickets.services.MaximoSenderService.enviar_interacao")
-    @patch("tickets.services.MaximoSenderService._get_member_href", return_value=None)
+    @patch(CONSULTA_SR, return_value=None)
     @patch("tickets.services.MaximoSenderService.criar_sr")
     def test_flags_desligam_anexos_e_worklogs(
         self, mock_criar, mock_href, mock_wl, mock_anexos_criacao
@@ -3353,3 +3360,21 @@ class RecriarSrMaximoCommandTest(TestCase):
         self._run("--sem-anexos", "--sem-worklogs")
         mock_anexos_criacao.assert_not_called()
         mock_wl.assert_not_called()
+
+    @patch(CONSULTA_SR, return_value=None)
+    @patch("tickets.services.MaximoSenderService.criar_sr")
+    def test_por_maximo_id_resolve_pelo_numero_da_sr(self, mock_criar, mock_href):
+        # A lista do portal mostra o maximo_id, não o pk: é esse número que o
+        # usuário tem à mão quando precisa recriar.
+        mock_criar.return_value = {"ticketid": "12345", "href": "https://mx/_ABC--"}
+        out = StringIO()
+        call_command("recriar_sr_maximo", "9001", "--por-maximo-id", stdout=out)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.maximo_id, "12345")
+        self.assertIn("9001 -> 12345", out.getvalue())
+
+    def test_por_maximo_id_avisa_numero_inexistente(self):
+        out = StringIO()
+        call_command("recriar_sr_maximo", "7777", "--por-maximo-id", "--dry-run", stdout=out)
+        self.assertIn("maximo_id inexistente(s)", out.getvalue())
+        self.assertIn("7777", out.getvalue())

@@ -13,6 +13,7 @@ ComandoPortal abortaria.
 
 import logging
 
+import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
@@ -35,6 +36,14 @@ class Command(BaseCommand):
             nargs="+",
             type=int,
             help="IDs dos tickets do portal (ex: 2429 2430 2431 2432 2433).",
+        )
+        parser.add_argument(
+            "--por-maximo-id",
+            action="store_true",
+            help=(
+                "Interpreta os números como maximo_id (o número da SR, que é o "
+                "que a lista de tickets do portal mostra) em vez do id local."
+            ),
         )
         parser.add_argument(
             "--dry-run",
@@ -71,16 +80,28 @@ class Command(BaseCommand):
             )
             return
 
+        # A lista de tickets do portal exibe o maximo_id (nº da SR), não o pk:
+        # por isso o modo --por-maximo-id, que é o número que o usuário tem à mão.
+        if options["por_maximo_id"]:
+            alvos = [str(i) for i in ids]
+            base = Ticket.objects.filter(maximo_id__in=alvos)
+            encontrados = {str(t.maximo_id) for t in base}
+        else:
+            alvos = ids
+            base = Ticket.objects.filter(id__in=ids)
+            encontrados = {t.id for t in base}
+
         tickets = list(
-            Ticket.objects.filter(id__in=ids)
-            .select_related("cliente", "ambiente", "area")
-            .order_by("id")
+            base.select_related("cliente", "ambiente", "area").order_by("id")
         )
 
-        faltando = sorted(set(ids) - {t.id for t in tickets})
+        faltando = [a for a in alvos if a not in encontrados]
         if faltando:
+            rotulo = "maximo_id" if options["por_maximo_id"] else "IDs"
             self.stdout.write(
-                self.style.WARNING(f"IDs inexistentes no portal, ignorados: {faltando}")
+                self.style.WARNING(
+                    f"{rotulo} inexistente(s) no portal, ignorado(s): {faltando}"
+                )
             )
 
         if dry_run:
@@ -98,13 +119,23 @@ class Command(BaseCommand):
             # Proteção contra duplicata: se o ticketid antigo ainda responde no
             # Maximo, a SR sobreviveu ao restore e recriar geraria SR dobrada.
             if ticket.maximo_id and not options["forcar"]:
-                href = MaximoSenderService._get_member_href(str(ticket.maximo_id), apikey)
-                if href:
+                sr_atual = self._consultar_sr(str(ticket.maximo_id), apikey)
+                if sr_atual:
+                    # Depois do restore a sequência do Maximo reemite números: o
+                    # ticketid antigo pode pertencer AGORA a outra SR. Por isso
+                    # imprime descrição/data — se não bater com o ticket, o
+                    # número foi reaproveitado e o certo é --forcar.
                     self.stdout.write(
                         self.style.WARNING(
-                            f"  SR {ticket.maximo_id} ainda existe no Maximo -> pulado "
-                            f"(use --forcar para recriar assim mesmo)."
+                            f"  SR {ticket.maximo_id} existe no Maximo -> pulado. "
+                            f"status={sr_atual.get('status')} "
+                            f"reportdate={sr_atual.get('reportdate')} "
+                            f"descrição={str(sr_atual.get('description'))[:60]!r}"
                         )
+                    )
+                    self.stdout.write(
+                        "    Se a descrição acima não for a deste ticket, o número "
+                        "foi reaproveitado após o restore: rode com --forcar."
                     )
                     pulados += 1
                     continue
@@ -228,6 +259,32 @@ class Command(BaseCommand):
                     "status e owner no Maximo antes de rodar o sync."
                 )
             )
+
+    @staticmethod
+    def _consultar_sr(maximo_id: str, apikey: str) -> dict | None:
+        """Devolve os campos da SR com esse ticketid, ou None se não existir."""
+        try:
+            resp = requests.get(
+                settings.MAXIMO_API_URL,
+                params={
+                    "oslc.where": f'ticketid="{maximo_id}"',
+                    "oslc.select": "ticketid,description,status,reportdate",
+                    "lean": 1,
+                },
+                headers={"apikey": apikey, "Accept": "application/json"},
+                verify=getattr(settings, "MAXIMO_VERIFY_SSL", True),
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                logger.error(
+                    f"Consulta da SR {maximo_id} falhou ({resp.status_code}): {resp.text}"
+                )
+                return None
+            membros = resp.json().get("member") or []
+            return membros[0] if membros else None
+        except Exception as e:
+            logger.error(f"Exceção ao consultar SR {maximo_id}: {e}")
+            return None
 
     @staticmethod
     def _anexos_abertura(ticket: Ticket) -> list:
