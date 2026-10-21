@@ -21,7 +21,7 @@ _MAGIC_SIGNATURES = {
     "pdf": (b"%PDF",),
     "png": (b"\x89PNG\r\n\x1a\n",),
     "jpg": (b"\xff\xd8\xff",),
-    # docx/xlsx/pptx/zip são todos contêineres ZIP -> "PK"
+    # docx/xlsx/xlsm/pptx/zip são todos contêineres ZIP -> "PK"
     "zip": (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"),
     # doc/xls/ppt legados são OLE2 Compound File
     "ole": (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",),
@@ -35,7 +35,7 @@ _EXT_PARA_CATEGORIA = {
     ".pdf": "pdf",
     ".png": "png",
     ".jpg": "jpg", ".jpeg": "jpg",
-    ".zip": "zip", ".docx": "zip", ".xlsx": "zip", ".pptx": "zip",
+    ".zip": "zip", ".docx": "zip", ".xlsx": "zip", ".xlsm": "zip", ".pptx": "zip",
     ".doc": "ole", ".xls": "ole", ".ppt": "ole",
     ".rar": "rar",
     ".txt": "text", ".csv": "text", ".xml": "text",
@@ -101,7 +101,7 @@ def _validar_anexo_comum(arquivo: Any) -> Any:
     # 2. Validar extensão
     ext = os.path.splitext(arquivo.name)[1].lower()
     extensoes_validas = [
-        ".pdf", ".png", ".jpg", ".jpeg", ".txt", ".xlsx", ".xls",
+        ".pdf", ".png", ".jpg", ".jpeg", ".txt", ".xlsx", ".xlsm", ".xls",
         ".docx", ".doc", ".csv", ".zip", ".rar", ".xml", ".pptx", ".ppt",
     ]
 
@@ -121,6 +121,7 @@ def _validar_anexo_comum(arquivo: Any) -> Any:
         "text/csv",
         "application/vnd.ms-excel",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel.sheet.macroEnabled.12",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.ms-powerpoint", 

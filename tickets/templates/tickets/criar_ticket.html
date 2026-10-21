@@ -188,7 +188,7 @@
                         id="arquivo" 
                         name="arquivo"
                         multiple 
-                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.rar,.xml,.pptx,.ppt">
+                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv,.zip,.rar,.xml,.pptx,.ppt">
                         <div id="jsFileError" class="invalid-feedback text-start"></div>
 
                     {% if form.arquivo.errors %}
@@ -241,7 +241,7 @@
         // --- 1. CONFIGURAÇÕES ---
         const MAX_SIZE_MB = 150;
         const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
-        const ALLOWED_EXTS_MULTIPLE = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv', '.zip', '.rar', '.xml', '.pptx', '.ppt'];
+        const ALLOWED_EXTS_MULTIPLE = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.xls', '.xlsx', '.xlsm', '.txt', '.csv', '.zip', '.rar', '.xml', '.pptx', '.ppt'];
         const ALLOWED_EXTS_DOC_REQ = ['.docx'];
 
         // --- 2. SELETORES ---

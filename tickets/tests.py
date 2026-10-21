@@ -3378,3 +3378,22 @@ class RecriarSrMaximoCommandTest(TestCase):
         call_command("recriar_sr_maximo", "7777", "--por-maximo-id", "--dry-run", stdout=out)
         self.assertIn("maximo_id inexistente(s)", out.getvalue())
         self.assertIn("7777", out.getvalue())
+
+
+class AnexoXlsmTest(SimpleTestCase):
+    """.xlsm (Excel com macro) aceito no chat e na criação; conteúdo precisa ser ZIP."""
+
+    def _arquivo(self, nome, conteudo):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return SimpleUploadedFile(nome, conteudo)
+
+    def test_xlsm_valido_aceito(self):
+        from .forms import _validar_anexo_comum
+        arquivo = self._arquivo("planilha.xlsm", b"PK\x03\x04xlsmbytes")
+        self.assertIs(_validar_anexo_comum(arquivo), arquivo)
+
+    def test_xlsm_com_conteudo_falso_rejeitado(self):
+        from django.core.exceptions import ValidationError
+        from .forms import _validar_anexo_comum
+        with self.assertRaises(ValidationError):
+            _validar_anexo_comum(self._arquivo("virus.xlsm", b"MZ\x90\x00exe"))
